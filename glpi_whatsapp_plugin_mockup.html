@@ -1,0 +1,493 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+
+  .glpi-shell { background: var(--surface-0); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden; }
+
+  /* GLPI top bar */
+  .glpi-topbar { background: #0a3a5c; display: flex; align-items: center; gap: 12px; padding: 10px 18px; }
+  .glpi-logo { color: #fff; font-size: 15px; font-weight: 500; letter-spacing: .5px; }
+  .glpi-logo span { color: #5bb8ff; }
+  .glpi-breadcrumb { color: rgba(255,255,255,.6); font-size: 12px; margin-left: auto; }
+  .glpi-breadcrumb b { color: rgba(255,255,255,.9); }
+
+  /* GLPI sidebar */
+  .glpi-body { display: flex; min-height: 520px; }
+  .glpi-sidebar { width: 180px; flex-shrink: 0; background: #0d2d45; padding: 16px 0; border-right: 0.5px solid rgba(255,255,255,.08); }
+  .sidebar-section { padding: 6px 14px 2px; font-size: 10px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .8px; margin-top: 10px; }
+  .sidebar-item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: rgba(255,255,255,.6); cursor: pointer; transition: background .15s; }
+  .sidebar-item:hover { background: rgba(255,255,255,.06); }
+  .sidebar-item.active { background: rgba(91,184,255,.15); color: #5bb8ff; }
+  .sidebar-item i { font-size: 15px; }
+
+  /* Main content */
+  .glpi-content { flex: 1; padding: 20px; overflow-y: auto; background: var(--surface-0); }
+  .page-title { font-size: 16px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .page-title i { color: #25d366; font-size: 18px; }
+  .page-sub { font-size: 12px; color: var(--text-secondary); margin-bottom: 18px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--border); margin-bottom: 16px; }
+  .tab { padding: 7px 14px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--text-accent); border-bottom-color: var(--text-accent); }
+
+  /* Config cards */
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .config-card { background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 10px; padding: 14px; }
+  .config-card.full { grid-column: 1/-1; }
+  .card-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+  .card-label i { font-size: 13px; }
+  .card-value { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+
+  /* Form rows */
+  .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .form-row label { font-size: 11px; color: var(--text-secondary); }
+  .fake-input { background: var(--surface-1); border: 0.5px solid var(--border-strong); border-radius: var(--radius); padding: 6px 10px; font-size: 12px; color: var(--text-primary); }
+  .fake-input.placeholder { color: var(--text-muted); }
+  .fake-input.has-value { color: var(--text-primary); }
+  .fake-select { display: flex; justify-content: space-between; align-items: center; }
+  .fake-select i { font-size: 12px; color: var(--text-muted); }
+
+  /* Status badge */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .badge-green { background: var(--bg-success); color: var(--text-success); }
+  .badge-yellow { background: var(--bg-warning); color: var(--text-warning); }
+  .badge-gray { background: var(--surface-1); color: var(--text-secondary); border: 0.5px solid var(--border); }
+  .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* Menu builder */
+  .menu-builder { background: var(--surface-1); border: 0.5px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .menu-item-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .menu-item-row:last-child { border-bottom: none; }
+  .menu-key { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-accent); color: var(--text-accent); font-size: 10px; font-weight: 500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .menu-text { flex: 1; color: var(--text-primary); }
+  .menu-action { font-size: 11px; color: var(--text-secondary); }
+  .menu-drag { color: var(--text-muted); font-size: 14px; cursor: grab; }
+
+  /* WA preview */
+  .wa-preview { background: #0b141a; border-radius: 10px; padding: 12px; min-height: 200px; }
+  .wa-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 0.5px solid rgba(255,255,255,.08); }
+  .wa-avatar { width: 32px; height: 32px; border-radius: 50%; background: #25d366; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 500; }
+  .wa-name { font-size: 13px; color: #e9edef; font-weight: 500; }
+  .wa-status { font-size: 11px; color: #8696a0; }
+  .wa-bubble { background: #1f2c34; border-radius: 6px 12px 12px 6px; padding: 8px 10px; max-width: 88%; margin-bottom: 6px; }
+  .wa-bubble.out { background: #005c4b; border-radius: 12px 6px 6px 12px; margin-left: auto; }
+  .wa-text { font-size: 12px; color: #e9edef; line-height: 1.4; }
+  .wa-time { font-size: 10px; color: #8696a0; text-align: right; margin-top: 3px; }
+  .wa-option { background: rgba(37,211,102,.12); border: 0.5px solid rgba(37,211,102,.3); border-radius: 6px; padding: 5px 10px; margin-top: 4px; font-size: 12px; color: #25d366; cursor: pointer; }
+
+  /* Connection status panel */
+  .conn-panel { background: var(--surface-1); border: 0.5px solid var(--border); border-radius: 10px; padding: 14px; display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .qr-box { width: 64px; height: 64px; background: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 4px; }
+  .qr-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 1px; width: 52px; height: 52px; }
+  .qr-cell { border-radius: 1px; }
+  .conn-info { flex: 1; }
+  .conn-title { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; }
+  .conn-desc { font-size: 11px; color: var(--text-secondary); }
+  .conn-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+
+  /* Btn */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 0.5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); }
+  .btn-primary { background: #25d366; border-color: #1da851; color: #fff; }
+  .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+  /* Flow diagram */
+  .flow-panel { margin-top: 16px; }
+  .flow-title { font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+
+  /* Section label */
+  .section-divider { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .7px; margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; }
+  .section-divider::after { content: ''; flex: 1; height: 0.5px; background: var(--border); }
+
+  /* Tab content toggle */
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+</style>
+
+<div class="glpi-shell">
+  <!-- Top bar -->
+  <div class="glpi-topbar">
+    <div class="glpi-logo">GL<span>PI</span></div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4)">|</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.7)">v10.0.14</div>
+    <div class="glpi-breadcrumb">Configuração › <b>WhatsApp Bot</b></div>
+    <span class="badge badge-green" style="margin-left:8px"><span class="badge-dot"></span> Conectado</span>
+  </div>
+
+  <div class="glpi-body">
+    <!-- Sidebar -->
+    <div class="glpi-sidebar">
+      <div class="sidebar-section">Principal</div>
+      <div class="sidebar-item"><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Dashboard</div>
+      <div class="sidebar-item"><i class="ti ti-ticket" aria-hidden="true"></i> Chamados</div>
+
+      <div class="sidebar-section">Plugins</div>
+      <div class="sidebar-item active"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp Bot</div>
+      <div class="sidebar-item" style="padding-left:28px;font-size:11px;opacity:.7"><i class="ti ti-settings" aria-hidden="true"></i> Configuração</div>
+      <div class="sidebar-item" style="padding-left:28px;font-size:11px;opacity:.7"><i class="ti ti-message-dots" aria-hidden="true"></i> Conversas</div>
+      <div class="sidebar-item" style="padding-left:28px;font-size:11px;opacity:.7"><i class="ti ti-chart-bar" aria-hidden="true"></i> Relatórios</div>
+
+      <div class="sidebar-section">Sistema</div>
+      <div class="sidebar-item"><i class="ti ti-users" aria-hidden="true"></i> Usuários</div>
+      <div class="sidebar-item"><i class="ti ti-plug" aria-hidden="true"></i> Plugins</div>
+    </div>
+
+    <!-- Main content -->
+    <div class="glpi-content">
+      <div class="page-title"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp Bot — Configuração</div>
+      <div class="page-sub">Atendimento automatizado via WhatsApp Web integrado ao GLPI</div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" onclick="showTab('conexao')">Conexão</div>
+        <div class="tab" onclick="showTab('bot')">Menu do Bot</div>
+        <div class="tab" onclick="showTab('ia')">IA / GPT</div>
+        <div class="tab" onclick="showTab('glpi')">Integração GLPI</div>
+        <div class="tab" onclick="showTab('preview')">Preview</div>
+      </div>
+
+      <!-- ABA: Conexão -->
+      <div class="tab-pane active" id="tab-conexao">
+        <div class="conn-panel">
+          <div class="qr-box" id="qr-box">
+            <svg viewBox="0 0 52 52" width="52" height="52">
+              <!-- QR simulado -->
+              <rect x="2" y="2" width="18" height="18" rx="2" fill="#000"/>
+              <rect x="4" y="4" width="14" height="14" rx="1" fill="#fff"/>
+              <rect x="6" y="6" width="10" height="10" rx="1" fill="#000"/>
+              <rect x="32" y="2" width="18" height="18" rx="2" fill="#000"/>
+              <rect x="34" y="4" width="14" height="14" rx="1" fill="#fff"/>
+              <rect x="36" y="6" width="10" height="10" rx="1" fill="#000"/>
+              <rect x="2" y="32" width="18" height="18" rx="2" fill="#000"/>
+              <rect x="4" y="34" width="14" height="14" rx="1" fill="#fff"/>
+              <rect x="6" y="36" width="10" height="10" rx="1" fill="#000"/>
+              <rect x="22" y="2" width="4" height="4" fill="#000"/>
+              <rect x="26" y="6" width="4" height="4" fill="#000"/>
+              <rect x="22" y="10" width="4" height="4" fill="#000"/>
+              <rect x="26" y="14" width="4" height="4" fill="#000"/>
+              <rect x="22" y="22" width="4" height="4" fill="#000"/>
+              <rect x="26" y="22" width="4" height="4" fill="#000"/>
+              <rect x="30" y="22" width="4" height="4" fill="#000"/>
+              <rect x="22" y="26" width="4" height="4" fill="#000"/>
+              <rect x="30" y="26" width="4" height="4" fill="#000"/>
+              <rect x="22" y="30" width="4" height="4" fill="#000"/>
+              <rect x="26" y="34" width="4" height="4" fill="#000"/>
+              <rect x="30" y="38" width="4" height="4" fill="#000"/>
+              <rect x="22" y="42" width="4" height="4" fill="#000"/>
+              <rect x="34" y="22" width="4" height="4" fill="#000"/>
+              <rect x="38" y="26" width="4" height="4" fill="#000"/>
+              <rect x="42" y="22" width="4" height="4" fill="#000"/>
+              <rect x="46" y="30" width="4" height="4" fill="#000"/>
+              <rect x="38" y="34" width="4" height="4" fill="#000"/>
+              <rect x="42" y="38" width="4" height="4" fill="#000"/>
+              <rect x="46" y="42" width="4" height="4" fill="#000"/>
+              <rect x="34" y="46" width="4" height="4" fill="#000"/>
+            </svg>
+          </div>
+          <div class="conn-info">
+            <div class="conn-title" id="conn-title">WhatsApp conectado</div>
+            <div class="conn-desc" id="conn-desc">Número: <b>+55 (11) 99999-0000</b> · Sessão ativa há 3 dias</div>
+            <div style="margin-top:6px"><span class="badge badge-green"><span class="badge-dot"></span> Online</span></div>
+          </div>
+          <div class="conn-actions">
+            <button class="btn btn-sm" onclick="toggleConn()"><i class="ti ti-refresh" aria-hidden="true"></i> <span id="conn-btn-label">Reconectar</span></button>
+            <button class="btn btn-sm" style="color:var(--text-danger);border-color:var(--border-danger)"><i class="ti ti-plug-x" aria-hidden="true"></i> Desconectar</button>
+          </div>
+        </div>
+
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-server" aria-hidden="true"></i> Serviço Node.js (Baileys)</div>
+            <div class="fake-input has-value">http://localhost:3333</div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-key" aria-hidden="true"></i> Token de autenticação</div>
+            <div class="fake-input has-value">••••••••••••••••••••••</div>
+          </div>
+          <div class="config-card full">
+            <div class="card-label"><i class="ti ti-webhook" aria-hidden="true"></i> URL do Webhook (copie para o serviço Node)</div>
+            <div class="fake-input has-value" style="font-family:var(--font-mono);font-size:11px;color:var(--text-accent)">https://glpi.empresa.com/plugins/whatsappbot/webhook.php</div>
+          </div>
+        </div>
+
+        <div class="section-divider">Número cadastrado para atendimento</div>
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-phone" aria-hidden="true"></i> Número WhatsApp Business</div>
+            <div class="fake-input has-value">+55 11 99999-0000</div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-clock" aria-hidden="true"></i> Timeout sem resposta (min)</div>
+            <div class="fake-input has-value">15</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA: Menu do Bot -->
+      <div class="tab-pane" id="tab-bot">
+        <div class="form-row">
+          <label>Mensagem de boas-vindas (enviada automaticamente ao iniciar conversa)</label>
+          <div class="fake-input" style="height:60px;display:flex;align-items:flex-start;padding-top:8px">Olá! Bem-vindo ao suporte de TI. Como posso ajudar?</div>
+        </div>
+
+        <div class="section-divider">Opções do menu</div>
+        <div class="menu-builder">
+          <div class="menu-item-row">
+            <i class="ti ti-grip-vertical menu-drag" aria-hidden="true"></i>
+            <div class="menu-key">1</div>
+            <div class="menu-text">Abrir chamado</div>
+            <div class="menu-action">→ Criar ticket GLPI</div>
+            <span class="badge badge-green">Ativo</span>
+          </div>
+          <div class="menu-item-row">
+            <i class="ti ti-grip-vertical menu-drag" aria-hidden="true"></i>
+            <div class="menu-key">2</div>
+            <div class="menu-text">Consultar andamento</div>
+            <div class="menu-action">→ Buscar tickets GLPI</div>
+            <span class="badge badge-green">Ativo</span>
+          </div>
+          <div class="menu-item-row">
+            <i class="ti ti-grip-vertical menu-drag" aria-hidden="true"></i>
+            <div class="menu-key">3</div>
+            <div class="menu-text">Falar com humano</div>
+            <div class="menu-action">→ Transferir conversa</div>
+            <span class="badge badge-yellow">Em espera</span>
+          </div>
+          <div class="menu-item-row" style="border-top: 0.5px dashed var(--border);">
+            <i class="ti ti-plus" aria-hidden="true" style="color:var(--text-accent);font-size:13px"></i>
+            <span style="font-size:12px;color:var(--text-accent);cursor:pointer">Adicionar opção</span>
+          </div>
+        </div>
+
+        <div class="section-divider">Redirecionamento pós-atendimento</div>
+        <div class="form-row">
+          <label>Após chamado marcado como "Resolvido" no GLPI</label>
+          <div class="fake-input fake-select has-value">Perguntar avaliação e transferir para humano se nota &lt; 3 <i class="ti ti-chevron-down"></i></div>
+        </div>
+      </div>
+
+      <!-- ABA: IA / GPT -->
+      <div class="tab-pane" id="tab-ia">
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-robot" aria-hidden="true"></i> Modelo</div>
+            <div class="fake-input fake-select has-value">GPT-4.1 <i class="ti ti-chevron-down"></i></div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-key" aria-hidden="true"></i> OpenAI API Key</div>
+            <div class="fake-input">sk-proj-••••••••••••••</div>
+          </div>
+          <div class="config-card full">
+            <div class="card-label"><i class="ti ti-message-code" aria-hidden="true"></i> System prompt (contexto da IA)</div>
+            <div class="fake-input" style="height:72px;display:flex;align-items:flex-start;padding-top:8px;font-size:11px">Você é o assistente de TI da empresa. Organize as informações de chamados de forma clara e amigável em português. Nunca invente dados — use somente o que veio da API do GLPI.</div>
+          </div>
+        </div>
+
+        <div class="section-divider">Comportamento</div>
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-list-check" aria-hidden="true"></i> IA resume status do chamado</div>
+            <div class="fake-input fake-select has-value">Sempre <i class="ti ti-chevron-down"></i></div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-language" aria-hidden="true"></i> Idioma das respostas</div>
+            <div class="fake-input fake-select has-value">Português (BR) <i class="ti ti-chevron-down"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA: Integração GLPI -->
+      <div class="tab-pane" id="tab-glpi">
+        <div class="config-grid">
+          <div class="config-card full">
+            <div class="card-label"><i class="ti ti-api" aria-hidden="true"></i> URL da API GLPI (interna)</div>
+            <div class="fake-input has-value" style="font-family:var(--font-mono);font-size:11px;color:var(--text-accent)">http://localhost/glpi/apirest.php</div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-user-check" aria-hidden="true"></i> App Token GLPI</div>
+            <div class="fake-input has-value">••••••••••••••••</div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-users" aria-hidden="true"></i> User Token para criar chamados</div>
+            <div class="fake-input has-value">••••••••••••••••</div>
+          </div>
+        </div>
+
+        <div class="section-divider">Criação automática de chamados</div>
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-category" aria-hidden="true"></i> Categoria padrão</div>
+            <div class="fake-input fake-select has-value">Suporte N1 — Geral <i class="ti ti-chevron-down"></i></div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-user-bolt" aria-hidden="true"></i> Técnico atribuído padrão</div>
+            <div class="fake-input fake-select has-value">Fila de entrada <i class="ti ti-chevron-down"></i></div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-phone" aria-hidden="true"></i> Identificar usuário por</div>
+            <div class="fake-input fake-select has-value">Número WhatsApp <i class="ti ti-chevron-down"></i></div>
+          </div>
+          <div class="config-card">
+            <div class="card-label"><i class="ti ti-user-question" aria-hidden="true"></i> Se não encontrar usuário</div>
+            <div class="fake-input fake-select has-value">Criar como visitante <i class="ti ti-chevron-down"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA: Preview -->
+      <div class="tab-pane" id="tab-preview">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Simulação de conversa</div>
+            <div class="wa-preview">
+              <div class="wa-header">
+                <div class="wa-avatar">IT</div>
+                <div>
+                  <div class="wa-name">Suporte TI</div>
+                  <div class="wa-status">online</div>
+                </div>
+              </div>
+
+              <div class="wa-bubble">
+                <div class="wa-text">Olá! Bem-vindo ao suporte de TI. Como posso ajudar?<br><br>*1* — Abrir chamado<br>*2* — Consultar andamento<br>*3* — Falar com humano</div>
+                <div class="wa-time">09:31</div>
+              </div>
+
+              <div class="wa-bubble out">
+                <div class="wa-text">2</div>
+                <div class="wa-time">09:31 ✓✓</div>
+              </div>
+
+              <div class="wa-bubble">
+                <div class="wa-text">Encontrei seus chamados:<br><br>📋 <b>#4521</b> — Computador lento<br>Status: <b>Em atendimento</b><br>Técnico: João Silva<br><br>Atualizado hoje às 08:44</div>
+                <div class="wa-time">09:31</div>
+              </div>
+
+              <div class="wa-bubble out">
+                <div class="wa-text">quero falar com alguém</div>
+                <div class="wa-time">09:32 ✓✓</div>
+              </div>
+
+              <div class="wa-bubble">
+                <div class="wa-text">Transferindo para um técnico. Aguarde um momento... 🔄</div>
+                <div class="wa-time">09:32</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">Fluxo do atendimento</div>
+            <svg width="100%" viewBox="0 0 300 440" role="img">
+              <title>Fluxo de atendimento do bot</title>
+              <desc>Diagrama mostrando o fluxo desde a mensagem do usuário até a resolução do chamado</desc>
+              <defs>
+                <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                  <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </marker>
+              </defs>
+
+              <!-- User -->
+              <g class="c-teal">
+                <rect x="75" y="10" width="150" height="36" rx="8" stroke-width="0.5"/>
+                <text class="th" x="150" y="28" text-anchor="middle" dominant-baseline="central">Usuário envia msg</text>
+              </g>
+              <line x1="150" y1="46" x2="150" y2="70" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+
+              <!-- Bot identifica -->
+              <g class="c-blue">
+                <rect x="60" y="70" width="180" height="36" rx="8" stroke-width="0.5"/>
+                <text class="th" x="150" y="88" text-anchor="middle" dominant-baseline="central">Bot identifica número</text>
+              </g>
+              <line x1="150" y1="106" x2="150" y2="130" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+
+              <!-- Menu -->
+              <g class="c-purple">
+                <rect x="50" y="130" width="200" height="36" rx="8" stroke-width="0.5"/>
+                <text class="th" x="150" y="148" text-anchor="middle" dominant-baseline="central">Exibe menu de opções</text>
+              </g>
+
+              <!-- Branches -->
+              <line x1="80" y1="166" x2="45" y2="196" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+              <line x1="150" y1="166" x2="150" y2="196" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+              <line x1="220" y1="166" x2="255" y2="196" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+
+              <!-- Opção 1 -->
+              <g class="c-amber">
+                <rect x="4" y="196" width="82" height="44" rx="8" stroke-width="0.5"/>
+                <text class="ts" x="45" y="212" text-anchor="middle" dominant-baseline="central">Abrir</text>
+                <text class="ts" x="45" y="228" text-anchor="middle" dominant-baseline="central">chamado</text>
+              </g>
+
+              <!-- Opção 2 -->
+              <g class="c-amber">
+                <rect x="110" y="196" width="80" height="44" rx="8" stroke-width="0.5"/>
+                <text class="ts" x="150" y="212" text-anchor="middle" dominant-baseline="central">Consultar</text>
+                <text class="ts" x="150" y="228" text-anchor="middle" dominant-baseline="central">chamado</text>
+              </g>
+
+              <!-- Opção 3 -->
+              <g class="c-coral">
+                <rect x="214" y="196" width="82" height="44" rx="8" stroke-width="0.5"/>
+                <text class="ts" x="255" y="212" text-anchor="middle" dominant-baseline="central">Falar com</text>
+                <text class="ts" x="255" y="228" text-anchor="middle" dominant-baseline="central">humano</text>
+              </g>
+
+              <!-- Arrows to GLPI -->
+              <line x1="45" y1="240" x2="100" y2="292" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+              <line x1="150" y1="240" x2="150" y2="292" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+
+              <!-- GLPI API box -->
+              <g class="c-gray">
+                <rect x="50" y="292" width="200" height="36" rx="8" stroke-width="0.5"/>
+                <text class="th" x="150" y="310" text-anchor="middle" dominant-baseline="central">API GLPI + GPT-4.1</text>
+              </g>
+              <line x1="150" y1="328" x2="150" y2="352" stroke="var(--border-strong)" stroke-width="1" marker-end="url(#arr2)"/>
+
+              <!-- Resposta WA -->
+              <g class="c-teal">
+                <rect x="60" y="352" width="180" height="36" rx="8" stroke-width="0.5"/>
+                <text class="th" x="150" y="370" text-anchor="middle" dominant-baseline="central">Resposta no WhatsApp</text>
+              </g>
+
+              <!-- Humano arrow -->
+              <line x1="255" y1="240" x2="255" y2="352" stroke="#d85a30" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr2)"/>
+              <text class="ts" x="270" y="296" dominant-baseline="central" style="fill:#d85a30">humano</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save bar -->
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;border-top:0.5px solid var(--border);padding-top:12px">
+        <button class="btn">Cancelar</button>
+        <button class="btn btn-primary"><i class="ti ti-device-floppy" aria-hidden="true"></i> Salvar configurações</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    const tabs = ['conexao','bot','ia','glpi','preview'];
+    const idx = tabs.indexOf(name);
+    document.querySelectorAll('.tab')[idx].classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+  function toggleConn() {
+    const btn = document.getElementById('conn-btn-label');
+    const title = document.getElementById('conn-title');
+    const desc = document.getElementById('conn-desc');
+    if (btn.textContent === 'Reconectar') {
+      btn.textContent = 'Aguardando QR';
+      title.textContent = 'Escaneie o QR Code';
+      desc.textContent = 'Abra o WhatsApp > Dispositivos vinculados > Adicionar dispositivo';
+    } else {
+      btn.textContent = 'Reconectar';
+      title.textContent = 'WhatsApp conectado';
+      desc.textContent = 'Número: +55 (11) 99999-0000 · Sessão ativa há 3 dias';
+    }
+  }
+</script>
