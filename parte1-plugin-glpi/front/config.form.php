@@ -323,7 +323,12 @@ function testConnection() {
       try {
         data = JSON.parse(raw);
       } catch (e) {
-        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + raw.substring(0, 200));
+        let readable = raw;
+        try {
+          const doc = new DOMParser().parseFromString(raw, 'text/html');
+          readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
+        } catch (_) { /* mantém raw se o parse falhar */ }
+        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + readable.substring(0, 1500));
       }
       return data;
     })
@@ -358,7 +363,14 @@ function saveConfig() {
       try {
         return JSON.parse(raw);
       } catch (e) {
-        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + raw.substring(0, 200));
+        // Não é JSON — provavelmente uma página de erro em HTML do GLPI.
+        // Extrai só o texto visível (sem as tags) para facilitar a leitura.
+        let readable = raw;
+        try {
+          const doc = new DOMParser().parseFromString(raw, 'text/html');
+          readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
+        } catch (_) { /* mantém raw se o parse falhar */ }
+        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + readable.substring(0, 1500));
       }
     })
     .then(data => {
