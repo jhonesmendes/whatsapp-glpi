@@ -175,9 +175,14 @@ function extractMessageText(msg) {
 }
 
 /**
- * Envia a mensagem recebida para o webhook do GLPI
+ * Envia a mensagem recebida para o webhook do GLPI.
+ * Força IPv4 (family: 4): esta VM tem IPv6 sem rota de saída
+ * (ENETUNREACH), fazendo o Node perder tempo tentando IPv6 antes de
+ * cair pro IPv4 — causava timeouts intermitentes. Tenta de novo uma
+ * vez em caso de falha de rede, pois mensagens perdidas aqui nunca
+ * chegam ao GLPI.
  */
-async function forwardToGlpi(payload) {
+async function forwardToGlpi(payload, attempt = 1) {
   if (!WEBHOOK_URL) {
     logger.warn('GLPI_WEBHOOK_URL não configurada — mensagem descartada');
     return;
@@ -185,8 +190,9 @@ async function forwardToGlpi(payload) {
 
   try {
     const resp = await axios.post(WEBHOOK_URL, payload, {
-      timeout : 15000,
-      headers : {
+      timeout      : 15000,
+      family       : 4,
+      headers      : {
         'Content-Type' : 'application/json',
         'x-bot-token'  : BOT_TOKEN,
       },
@@ -195,6 +201,13 @@ async function forwardToGlpi(payload) {
   } catch (err) {
     const status  = err.response?.status;
     const message = err.response?.data || err.message;
-    logger.error({ status, message, payload }, 'Erro ao chamar webhook GLPI');
+
+    if (attempt < 2) {
+      logger.warn({ status, message, attempt }, 'Erro ao chamar webhook GLPI — tentando novamente');
+      await new Promise((r) => setTimeout(r, 2000));
+      return forwardToGlpi(payload, attempt + 1);
+    }
+
+    logger.error({ status, message, payload }, 'Erro ao chamar webhook GLPI (desistindo após retry)');
   }
 }
