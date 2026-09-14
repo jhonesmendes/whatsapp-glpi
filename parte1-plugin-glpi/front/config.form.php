@@ -1,3 +1,4 @@
+
 <?php
 /**
  * Tela de configuração do plugin no GLPI
@@ -45,7 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
 }
 
 // Processa teste de conexão (AJAX)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
+// DIAGNÓSTICO TEMPORÁRIO: aceita tanto POST quanto GET (isset($_REQUEST...))
+// para testar se o bloqueio é especificamente sobre o metodo HTTP ser POST.
+if (isset($_REQUEST['test_connection'])) {
     // Descarta qualquer saída acidental (avisos do PHP, BOM, etc.)
     // para garantir que a resposta seja JSON puro.
     while (ob_get_level() > 0) {
@@ -59,9 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
             $result = ['ok' => false, 'message' => 'Sem permissão (direito config/UPDATE ausente ou sessão expirada).'];
         } else {
             $result = PluginWhatsappbotConfig::testBaileysConnection(
-                $_POST['baileys_url']   ?? null,
-                $_POST['baileys_token'] ?? null
+                $_REQUEST['baileys_url']   ?? null,
+                $_REQUEST['baileys_token'] ?? null
             );
+            $result['metodo_usado'] = $_SERVER['REQUEST_METHOD'];
         }
     } catch (\Throwable $e) {
         $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
@@ -136,6 +140,7 @@ $selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
         <button type="button" class="btn-test" onclick="testConnection()">Testar conexão</button>
         <button type="button" class="btn-test" style="background:#128c7e" onclick="showQrCode()">📷 Ver QR code</button>
         <button type="button" class="btn-test" style="background:#8e44ad" onclick="diagnoseLimit()">🔬 Diagnóstico de limite</button>
+        <button type="button" class="btn-test" style="background:#d35400" onclick="testViaGet()">🧪 Testar via GET</button>
       </div>
 
       <div class="wa-grid">
@@ -454,6 +459,32 @@ async function diagnoseLimit() {
   const text = report.join('\n');
   console.log('== DIAGNOSTICO DE LIMITE ==\n' + text);
   alert(text);
+}
+
+// DIAGNÓSTICO TEMPORÁRIO — testa se o bloqueio é especifico do metodo POST,
+// mandando os mesmos dados via GET (querystring) para o mesmo endpoint.
+async function testViaGet() {
+  const params = new URLSearchParams();
+  params.set('test_connection', '1');
+  params.set('baileys_url', document.querySelector('[name=baileys_url]').value);
+  params.set('baileys_token', document.querySelector('[name=baileys_token]').value);
+
+  try {
+    const r = await fetch(WA_SELF_URL + '?' + params.toString(), { method: 'GET' });
+    const raw = await r.text();
+    let readable = raw;
+    let isJson = false;
+    try { JSON.parse(raw); isJson = true; } catch (e) {
+      try {
+        const doc = new DOMParser().parseFromString(raw, 'text/html');
+        readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
+      } catch (_) {}
+    }
+    alert((isJson ? 'GET FUNCIONOU:\n' : 'GET TAMBEM BLOQUEADO:\n') + readable.substring(0, 1000));
+    console.log('testViaGet ->', isJson ? 'JSON OK' : 'HTML/erro', raw);
+  } catch (e) {
+    alert('Erro de rede no teste GET: ' + e.message);
+  }
 }
 
 function showQrCode() {
