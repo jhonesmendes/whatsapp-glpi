@@ -21,6 +21,23 @@ include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 // não permitida"). O token próprio é um HMAC (sessão + janela de tempo)
 // que não escreve nada na sessão, então não sofre essa corrida.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
+
+    // --- DIAGNÓSTICO TEMPORÁRIO (v2) ---
+    if (isset($_GET['debug_csrf'])) {
+        header('Content-Type: text/plain; charset=utf-8');
+        $received = $_POST['_whatsappbot_token'] ?? '(AUSENTE)';
+        $valid    = PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null);
+        $debug    = PluginWhatsappbotConfig::debugFormToken($_POST['_whatsappbot_token'] ?? null);
+        echo "== DEBUG TOKEN v2 ==\n";
+        echo "Token recebido: $received\n";
+        echo "Validou? " . ($valid ? 'SIM' : 'NAO') . "\n";
+        foreach ($debug as $k => $v) {
+            echo "$k: $v\n";
+        }
+        exit;
+    }
+    // --- FIM DIAGNÓSTICO TEMPORÁRIO ---
+
     if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
         Html::displayErrorAndDie('Token de formulário inválido ou expirado. Recarregue a página e tente novamente.');
     }
@@ -94,7 +111,7 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 
 <div class="wa-config-wrap">
 
-  <form method="POST" action="">
+  <form method="POST" action="?debug_csrf=1">
   <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
 
   <!-- Status da conexão -->

@@ -108,6 +108,32 @@ class PluginWhatsappbotConfig extends CommonGLPI {
         return hash_hmac('sha256', session_id() . '|' . $window, self::getCsrfSecret());
     }
 
+    /**
+     * DIAGNÓSTICO TEMPORÁRIO — retorna detalhes internos do cálculo do
+     * token para investigar falhas de validação. Remover depois.
+     */
+    public static function debugFormToken(?string $token): array {
+        $path      = self::getCsrfSecretPath();
+        $dir       = dirname($path);
+        $fileExisted = is_file($path);
+        $secret    = self::getCsrfSecret(); // pode criar o arquivo agora, se ainda não existir
+        $nowWindow = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
+
+        return [
+            'session_id'            => session_id(),
+            'config_dir'            => $dir,
+            'config_dir_existe'     => is_dir($dir) ? 'sim' : 'nao',
+            'config_dir_gravavel'   => is_writable($dir) ? 'sim' : (is_dir($dir) ? 'nao' : 'n/a (dir nao existe)'),
+            'secret_arquivo_existia_antes' => $fileExisted ? 'sim' : 'nao',
+            'secret_arquivo_existe_agora'  => is_file($path) ? 'sim' : 'nao',
+            'secret_arquivo_gravavel'      => is_file($path) ? (is_writable($path) ? 'sim' : 'nao') : 'n/a',
+            'secret_primeiros_8_chars'     => substr($secret, 0, 8),
+            'janela_atual'          => $nowWindow,
+            'token_esperado_janela_atual'    => hash_hmac('sha256', session_id() . '|' . $nowWindow, $secret),
+            'token_esperado_janela_anterior' => hash_hmac('sha256', session_id() . '|' . ($nowWindow - 1), $secret),
+        ];
+    }
+
     public static function validateFormToken(?string $token): bool {
         if (empty($token)) {
             return false;
