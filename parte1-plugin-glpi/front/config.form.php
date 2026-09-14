@@ -73,6 +73,15 @@ Html::header('WhatsApp Bot — Configuração', $_SERVER['PHP_SELF'], 'config', 
 $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     . '://' . $_SERVER['HTTP_HOST']
     . '/plugins/whatsappbot/webhook.php';
+
+// URL fixa desta própria página, calculada uma única vez no servidor.
+// Não usamos location.href/pathname no JS porque a navegação por abas
+// do GLPI ("Configurar | conversations") reescreve a barra de endereço
+// (ex: .../config.form.php/conversations.php) sem recarregar a página,
+// o que faria o POST de salvar/testar ir para um caminho errado.
+$selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
+    . '://' . $_SERVER['HTTP_HOST']
+    . '/plugins/whatsappbot/front/config.form.php';
 ?>
 
 <style>
@@ -304,6 +313,9 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 </div>
 
 <script>
+// URL fixa, vinda do servidor — não usar location.href/pathname (ver comentário PHP acima)
+const WA_SELF_URL = <?= json_encode($selfUrl) ?>;
+
 function testConnection() {
   const bar  = document.getElementById('status-bar');
   const dot  = document.getElementById('status-dot');
@@ -316,7 +328,7 @@ function testConnection() {
   fd.append('baileys_url', document.querySelector('[name=baileys_url]').value);
   fd.append('baileys_token', document.querySelector('[name=baileys_token]').value);
 
-  fetch(location.href, { method: 'POST', body: fd })
+  fetch(WA_SELF_URL, { method: 'POST', body: fd })
     .then(async r => {
       const raw = await r.text();
       let data;
@@ -357,7 +369,7 @@ function saveConfig() {
   const fd   = new FormData(form);
   fd.append('save', '1');
 
-  fetch(location.pathname, { method: 'POST', body: fd })
+  fetch(WA_SELF_URL, { method: 'POST', body: fd })
     .then(async r => {
       const raw = await r.text();
       try {
