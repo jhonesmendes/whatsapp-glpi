@@ -79,9 +79,11 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 // do GLPI ("Configurar | conversations") reescreve a barra de endereço
 // (ex: .../config.form.php/conversations.php) sem recarregar a página,
 // o que faria o POST de salvar/testar ir para um caminho errado.
+// Usa PHP_SELF (caminho real deste script, incluindo o prefixo da
+// instalação, ex: /suporte/glpi/...) em vez de montar o caminho na mão.
 $selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     . '://' . $_SERVER['HTTP_HOST']
-    . '/plugins/whatsappbot/front/config.form.php';
+    . $_SERVER['PHP_SELF'];
 ?>
 
 <style>
