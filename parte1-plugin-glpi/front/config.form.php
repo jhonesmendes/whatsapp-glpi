@@ -9,48 +9,36 @@ Session::checkRight('config', UPDATE);
 
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 
-// --- DIAGNÓSTICO TEMPORÁRIO (v3) ---
-// Colocado logo após o checkRight, incondicional, para não depender de
-// nenhuma outra lógica do arquivo. Funciona tanto em GET quanto em POST.
-if (isset($_GET['debug_csrf'])) {
-    header('Content-Type: text/plain; charset=utf-8');
-    echo "== DEBUG v3 ==\n";
-    echo "Chegou ate aqui = Session::checkRight passou.\n";
-    echo "Metodo: " . $_SERVER['REQUEST_METHOD'] . "\n";
-    echo "Campos GET: " . implode(', ', array_keys($_GET)) . "\n";
-    echo "Campos POST: " . implode(', ', array_keys($_POST)) . "\n";
-    if (isset($_POST['_whatsappbot_token'])) {
-        $token = $_POST['_whatsappbot_token'];
-        echo "\nToken recebido: $token\n";
-        echo "Validou? " . (PluginWhatsappbotConfig::validateFormToken($token) ? 'SIM' : 'NAO') . "\n";
-        foreach (PluginWhatsappbotConfig::debugFormToken($token) as $k => $v) {
-            echo "$k: $v\n";
-        }
-    } else {
-        echo "\n(nenhum token '_whatsappbot_token' no POST -- normal se foi so um GET de teste)\n";
-    }
-    exit;
-}
-// --- FIM DIAGNÓSTICO TEMPORÁRIO ---
-
 // Processa salvamento
 //
-// OBS: usamos um token anti-CSRF próprio (PluginWhatsappbotConfig::*FormToken)
-// em vez do Session::checkCSRF() nativo. Diagnóstico confirmou que, nesta
-// instância, a lista de tokens CSRF da sessão ($_SESSION['glpicsrftokens'])
-// é sobrescrita por chamadas AJAX concorrentes disparadas pelo próprio
-// layout do GLPI (menu, sino de notificação, busca) enquanto esta tela —
-// mais pesada em JS — está aberta, fazendo o token gerado no carregamento
-// da página nunca bater com o exigido no envio (falso positivo de "ação
-// não permitida"). O token próprio é um HMAC (sessão + janela de tempo)
-// que não escreve nada na sessão, então não sofre essa corrida.
+// OBS: o envio é feito via fetch/AJAX (função saveConfig() no JS), não por
+// submit tradicional de <form> com navegação de página inteira. Diagnóstico
+// em produção mostrou que o POST do formulário tradicional nunca chega a
+// executar sequer a primeira linha deste arquivo (nem o checkRight),
+// enquanto POSTs via fetch para esta mesma URL (ex: "Testar conexão")
+// sempre funcionaram — indício de bloqueio por WAF/ModSecurity do hosting
+// específico para navegação de formulário POST tradicional, não para XHR.
+// Usar fetch para tudo contorna esse bloqueio.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-    if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
-        Html::displayErrorAndDie('Token de formulário inválido ou expirado. Recarregue a página e tente novamente.');
+    while (ob_get_level() > 0) {
+        ob_end_clean();
     }
-    PluginWhatsappbotConfig::saveConfig($_POST);
-    Session::addMessageAfterRedirect('Configurações salvas com sucesso!', true, INFO);
-    Html::back();
+    ob_start();
+    header('Content-Type: application/json');
+
+    try {
+        if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
+            $result = ['ok' => false, 'message' => 'Token de formulário inválido ou expirado. Recarregue a página e tente novamente.'];
+        } else {
+            PluginWhatsappbotConfig::saveConfig($_POST);
+            $result = ['ok' => true, 'message' => 'Configurações salvas com sucesso!'];
+        }
+    } catch (\Throwable $e) {
+        $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
+    }
+
+    ob_end_clean();
+    echo json_encode($result);
     exit;
 }
 
@@ -118,7 +106,7 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 
 <div class="wa-config-wrap">
 
-  <form method="POST" action="?debug_csrf=1">
+  <form id="wa-config-form" onsubmit="return false;">
   <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
 
   <!-- Status da conexão -->
@@ -307,8 +295,9 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 
   <!-- Botões -->
   <div class="wa-footer">
+    <span id="save-status" style="font-size:12px;margin-right:10px"></span>
     <a href="conversations.php" class="vsubmit">Ver Conversas</a>
-    <input type="submit" name="save" value="💾 Salvar configurações" class="submit">
+    <button type="button" class="submit" onclick="saveConfig()">💾 Salvar configurações</button>
   </div>
 
   </form>
@@ -351,6 +340,40 @@ function testConnection() {
       dot.className = 'wa-dot red';
       text.textContent = '❌ Erro de rede: ' + e.message;
       console.error('Teste de conexão falhou:', e);
+    });
+}
+
+function saveConfig() {
+  const statusEl = document.getElementById('save-status');
+  statusEl.textContent = 'Salvando...';
+  statusEl.style.color = '#888';
+
+  const form = document.getElementById('wa-config-form');
+  const fd   = new FormData(form);
+  fd.append('save', '1');
+
+  fetch(location.pathname, { method: 'POST', body: fd })
+    .then(async r => {
+      const raw = await r.text();
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + raw.substring(0, 200));
+      }
+    })
+    .then(data => {
+      if (data.ok) {
+        statusEl.style.color = '#25d366';
+        statusEl.textContent = '✅ ' + data.message;
+      } else {
+        statusEl.style.color = '#e74c3c';
+        statusEl.textContent = '❌ ' + data.message;
+      }
+    })
+    .catch(e => {
+      statusEl.style.color = '#e74c3c';
+      statusEl.textContent = '❌ Erro: ' + e.message;
+      console.error('Salvar falhou:', e);
     });
 }
 

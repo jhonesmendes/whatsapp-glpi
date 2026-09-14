@@ -109,8 +109,8 @@ class PluginWhatsappbotConfig extends CommonGLPI {
     }
 
     /**
-     * DIAGNÓSTICO TEMPORÁRIO — retorna detalhes internos do cálculo do
-     * token para investigar falhas de validação. Remover depois.
+     * Utilitário de diagnóstico — retorna detalhes internos do cálculo do
+     * token, útil para investigar falhas de validação caso reapareçam.
      */
     public static function debugFormToken(?string $token): array {
         $path      = self::getCsrfSecretPath();
