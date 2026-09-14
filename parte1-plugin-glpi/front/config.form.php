@@ -5,20 +5,20 @@
  */
 
 include('../../../inc/includes.php');
-Session::checkRight('config', UPDATE);
-
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 
-// Processa salvamento
-//
-// OBS: o envio é feito via fetch/AJAX (função saveConfig() no JS), não por
-// submit tradicional de <form> com navegação de página inteira. Diagnóstico
-// em produção mostrou que o POST do formulário tradicional nunca chega a
-// executar sequer a primeira linha deste arquivo (nem o checkRight),
-// enquanto POSTs via fetch para esta mesma URL (ex: "Testar conexão")
-// sempre funcionaram — indício de bloqueio por WAF/ModSecurity do hosting
-// específico para navegação de formulário POST tradicional, não para XHR.
-// Usar fetch para tudo contorna esse bloqueio.
+$isAjaxAction = $_SERVER['REQUEST_METHOD'] === 'POST'
+    && (isset($_POST['save']) || isset($_POST['test_connection']));
+
+// Nas rotas AJAX (save/test_connection) verificamos o direito manualmente
+// e sempre respondemos em JSON, mesmo em caso de falha — em vez de
+// Session::checkRight(), que ao falhar interrompe a execução e devolve uma
+// página HTML inteira do GLPI (o que quebra o fetch no JS, que espera JSON).
+if (!$isAjaxAction) {
+    Session::checkRight('config', UPDATE);
+}
+
+// Processa salvamento (via fetch/AJAX — ver função saveConfig() no JS)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     while (ob_get_level() > 0) {
         ob_end_clean();
@@ -27,7 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     header('Content-Type: application/json');
 
     try {
-        if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
+        if (!Session::haveRight('config', UPDATE)) {
+            $result = ['ok' => false, 'message' => 'Sem permissão para alterar esta configuração (direito config/UPDATE ausente ou sessão expirada).'];
+        } elseif (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
             $result = ['ok' => false, 'message' => 'Token de formulário inválido ou expirado. Recarregue a página e tente novamente.'];
         } else {
             PluginWhatsappbotConfig::saveConfig($_POST);
@@ -53,10 +55,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
     header('Content-Type: application/json');
 
     try {
-        $result = PluginWhatsappbotConfig::testBaileysConnection(
-            $_POST['baileys_url']   ?? null,
-            $_POST['baileys_token'] ?? null
-        );
+        if (!Session::haveRight('config', UPDATE)) {
+            $result = ['ok' => false, 'message' => 'Sem permissão (direito config/UPDATE ausente ou sessão expirada).'];
+        } else {
+            $result = PluginWhatsappbotConfig::testBaileysConnection(
+                $_POST['baileys_url']   ?? null,
+                $_POST['baileys_token'] ?? null
+            );
+        }
     } catch (\Throwable $e) {
         $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
     }
