@@ -29,7 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
     header('Content-Type: application/json');
 
     try {
-        $result = PluginWhatsappbotConfig::testBaileysConnection();
+        $result = PluginWhatsappbotConfig::testBaileysConnection(
+            $_POST['baileys_url']   ?? null,
+            $_POST['baileys_token'] ?? null
+        );
     } catch (\Throwable $e) {
         $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
     }

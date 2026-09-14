@@ -77,19 +77,25 @@ class PluginWhatsappbotConfig extends CommonGLPI {
     // Verifica conexão com Baileys
     // ---------------------------------------------------------------
 
-    public static function testBaileysConnection(): array {
+    public static function testBaileysConnection(?string $baileysUrl = null, ?string $baileysToken = null): array {
         $config = self::getConfig();
-        if (empty($config['baileys_url'])) {
+
+        // Usa os valores recém-digitados no formulário (ainda não salvos), se enviados;
+        // caso contrário, cai para o que já está gravado no banco.
+        $baileysUrl   = $baileysUrl   !== null && $baileysUrl   !== '' ? $baileysUrl   : ($config['baileys_url']   ?? '');
+        $baileysToken = $baileysToken !== null                        ? $baileysToken : ($config['baileys_token'] ?? '');
+
+        if (empty($baileysUrl)) {
             return ['ok' => false, 'message' => 'URL do servidor Baileys não configurada'];
         }
 
-        $url = rtrim($config['baileys_url'], '/') . '/status';
+        $url = rtrim($baileysUrl, '/') . '/status';
         $ch  = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 5,
             CURLOPT_HTTPHEADER     => [
-                'x-bot-token: ' . ($config['baileys_token'] ?? ''),
+                'x-bot-token: ' . $baileysToken,
                 'Content-Type: application/json'
             ]
         ]);
