@@ -77,6 +77,7 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
         <div class="wa-dot gray" id="status-dot"></div>
         <span id="status-text">Clique em "Testar conexão" para verificar</span>
         <button type="button" class="btn-test" onclick="testConnection()">Testar conexão</button>
+        <button type="button" class="btn-test" style="background:#128c7e" onclick="showQrCode()">📷 Ver QR code</button>
       </div>
 
       <div class="wa-grid">
@@ -289,6 +290,16 @@ function testConnection() {
       dot.className = 'wa-dot red';
       text.textContent = '❌ Erro de rede: ' + e.message;
     });
+}
+
+function showQrCode() {
+  const baileysUrl = document.querySelector('[name=baileys_url]').value.replace(/\/$/, '');
+  const token = document.querySelector('[name=baileys_token]').value;
+  if (!baileysUrl) {
+    alert('Preencha a URL do servidor Baileys primeiro.');
+    return;
+  }
+  window.open(baileysUrl + '/qr-view?token=' + encodeURIComponent(token), 'wa-qr', 'width=400,height=480');
 }
 </script>
 

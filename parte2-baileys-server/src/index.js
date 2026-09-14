@@ -10,12 +10,14 @@
 
 import 'dotenv/config';
 import express    from 'express';
+import QRCode     from 'qrcode';
 import { logger } from './logger.js';
 import { createBot, getClient } from './whatsapp.js';
 import { authMiddleware } from './middleware.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3333;
+const BOT_TOKEN = process.env.BOT_TOKEN || '';
 
 app.use(express.json());
 
@@ -121,6 +123,59 @@ app.post('/logout', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /qr-view
+ * Página HTML simples para escanear o QR code pelo navegador.
+ * Autenticação via ?token= (query), já que é acessado direto pelo navegador.
+ * Auto-atualiza sozinha até a conexão ser estabelecida.
+ */
+app.get('/qr-view', async (req, res) => {
+  if (BOT_TOKEN && req.query.token !== BOT_TOKEN) {
+    return res.status(401).send('Unauthorized — informe ?token=SEU_BOT_TOKEN na URL');
+  }
+
+  const client = getClient();
+
+  if (client?.connectionState === 'open') {
+    const number = client.user?.id?.split(':')[0] || 'desconhecido';
+    return res.send(`
+      <html><head><meta charset="utf-8"><title>WhatsApp conectado</title></head>
+      <body style="font-family:sans-serif;text-align:center;margin-top:80px">
+        <h2>✅ WhatsApp conectado</h2>
+        <p>Número: <strong>${number}</strong></p>
+      </body></html>
+    `);
+  }
+
+  if (!client?.qrCode) {
+    return res.send(`
+      <html><head><meta charset="utf-8"><meta http-equiv="refresh" content="3">
+      <title>Aguardando QR code</title></head>
+      <body style="font-family:sans-serif;text-align:center;margin-top:80px">
+        <h2>Aguardando QR code...</h2>
+        <p>Esta página atualiza sozinha.</p>
+      </body></html>
+    `);
+  }
+
+  try {
+    const dataUrl = await QRCode.toDataURL(client.qrCode, { width: 320 });
+    res.send(`
+      <html><head><meta charset="utf-8"><meta http-equiv="refresh" content="20">
+      <title>Escaneie o QR code</title></head>
+      <body style="font-family:sans-serif;text-align:center;margin-top:40px">
+        <h2>Escaneie com o WhatsApp</h2>
+        <p>WhatsApp &gt; Aparelhos conectados &gt; Conectar aparelho</p>
+        <img src="${dataUrl}" alt="QR Code" style="width:320px;height:320px" />
+        <p style="color:#888">Esta página atualiza sozinha a cada 20s.</p>
+      </body></html>
+    `);
+  } catch (err) {
+    logger.error({ err }, 'Erro ao gerar imagem do QR code');
+    res.status(500).send('Erro ao gerar QR code');
   }
 });
 
