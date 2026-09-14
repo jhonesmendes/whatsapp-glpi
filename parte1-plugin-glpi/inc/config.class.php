@@ -63,6 +63,67 @@ class PluginWhatsappbotConfig extends CommonGLPI {
     // Menu GLPI
     // ---------------------------------------------------------------
 
+    // ---------------------------------------------------------------
+    // Token anti-CSRF próprio (sem depender de $_SESSION['glpicsrftokens'])
+    // ---------------------------------------------------------------
+    //
+    // Session::checkCSRF() nativo do GLPI guarda os tokens válidos num
+    // array dentro de $_SESSION. Em telas com bastante atividade AJAX de
+    // fundo (menu, notificações, busca), pedidos concorrentes podem gravar
+    // a sessão de volta com uma cópia desatualizada e apagar o token que
+    // acabou de ser gerado — falso positivo de "ação não permitida".
+    //
+    // Para evitar essa corrida, geramos um token que não escreve nada na
+    // sessão: é um HMAC de (id da sessão + janela de tempo) usando um
+    // segredo mantido só no servidor. A validação recalcula o HMAC e
+    // compara — sem precisar consultar nenhum estado mutável.
+
+    const CSRF_WINDOW_SECONDS = 1800; // 30 minutos por janela (token válido por até ~1h)
+
+    private static function getCsrfSecretPath(): string {
+        return GLPI_ROOT . '/plugins/whatsappbot/config/csrf_secret.php';
+    }
+
+    private static function getCsrfSecret(): string {
+        $path = self::getCsrfSecretPath();
+
+        if (is_file($path)) {
+            $secret = include $path;
+            if (is_string($secret) && strlen($secret) >= 32) {
+                return $secret;
+            }
+        }
+
+        $secret = bin2hex(random_bytes(32));
+        $dir    = dirname($path);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0750, true);
+        }
+        file_put_contents($path, "<?php\nreturn " . var_export($secret, true) . ";\n");
+        return $secret;
+    }
+
+    public static function generateFormToken(): string {
+        $window = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
+        return hash_hmac('sha256', session_id() . '|' . $window, self::getCsrfSecret());
+    }
+
+    public static function validateFormToken(?string $token): bool {
+        if (empty($token)) {
+            return false;
+        }
+        $secret = self::getCsrfSecret();
+        $nowWindow = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
+        // Aceita a janela atual e a anterior (evita falha na borda do intervalo)
+        foreach ([$nowWindow, $nowWindow - 1] as $window) {
+            $expected = hash_hmac('sha256', session_id() . '|' . $window, $secret);
+            if (hash_equals($expected, $token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static function getMenuName()    { return 'WhatsApp Bot'; }
     static function getMenuContent() {
         $menu = [];

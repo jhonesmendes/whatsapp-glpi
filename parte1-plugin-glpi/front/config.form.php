@@ -10,40 +10,23 @@ Session::checkRight('config', UPDATE);
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 
 // Processa salvamento
+//
+// OBS: usamos um token anti-CSRF próprio (PluginWhatsappbotConfig::*FormToken)
+// em vez do Session::checkCSRF() nativo. Diagnóstico confirmou que, nesta
+// instância, a lista de tokens CSRF da sessão ($_SESSION['glpicsrftokens'])
+// é sobrescrita por chamadas AJAX concorrentes disparadas pelo próprio
+// layout do GLPI (menu, sino de notificação, busca) enquanto esta tela —
+// mais pesada em JS — está aberta, fazendo o token gerado no carregamento
+// da página nunca bater com o exigido no envio (falso positivo de "ação
+// não permitida"). O token próprio é um HMAC (sessão + janela de tempo)
+// que não escreve nada na sessão, então não sofre essa corrida.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-
-    // --- DIAGNÓSTICO TEMPORÁRIO ---
-    // Remover este bloco assim que o problema de CSRF for identificado.
-    if (isset($_GET['debug_csrf'])) {
-        $sessionTokens = $_SESSION['glpicsrftokens'] ?? null;
-        header('Content-Type: text/plain; charset=utf-8');
-        echo "== DEBUG CSRF WhatsappBot ==\n";
-        echo "Token recebido no POST: " . ($_POST['_glpi_csrf_token'] ?? '(AUSENTE)') . "\n";
-        echo "Sessao possui lista glpicsrftokens? " . (is_array($sessionTokens) ? 'sim, ' . count($sessionTokens) . ' token(s)' : 'NAO / formato inesperado: ' . gettype($sessionTokens)) . "\n";
-        if (is_array($sessionTokens)) {
-            echo "Tokens na sessao: " . implode(', ', array_keys($sessionTokens)) . "\n";
-        }
-        echo "Nome da sessao PHP: " . session_name() . "\n";
-        echo "ID da sessao atual: " . session_id() . "\n";
-        echo "Cookie de sessao enviado pelo navegador: " . ($_COOKIE[session_name()] ?? '(AUSENTE)') . "\n";
-        echo "Total de campos recebidos no POST: " . count($_POST) . "\n";
-        echo "Nomes dos campos POST: " . implode(', ', array_keys($_POST)) . "\n";
-        exit;
+    if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
+        Html::displayErrorAndDie('Token de formulário inválido ou expirado. Recarregue a página e tente novamente.');
     }
-    // --- FIM DIAGNÓSTICO TEMPORÁRIO ---
-
-    Session::checkCSRF($_POST);
     PluginWhatsappbotConfig::saveConfig($_POST);
     Session::addMessageAfterRedirect('Configurações salvas com sucesso!', true, INFO);
     Html::back();
-    exit;
-}
-
-// Renova o token CSRF em segundo plano (evita "ação não permitida"
-// quando o usuário demora para preencher o formulário e o token expira)
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['refresh_csrf'])) {
-    header('Content-Type: application/json');
-    echo json_encode(['token' => Session::getNewCSRFToken()]);
     exit;
 }
 
@@ -111,8 +94,8 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 
 <div class="wa-config-wrap">
 
-  <form method="POST" action="?debug_csrf=1">
-  <?php echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]); ?>
+  <form method="POST" action="">
+  <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
 
   <!-- Status da conexão -->
   <div class="wa-section">
@@ -320,8 +303,6 @@ function testConnection() {
   fd.append('baileys_url', document.querySelector('[name=baileys_url]').value);
   fd.append('baileys_token', document.querySelector('[name=baileys_token]').value);
 
-  fd.append('_glpi_csrf_token', document.querySelector('[name=_glpi_csrf_token]').value);
-
   fetch(location.href, { method: 'POST', body: fd })
     .then(async r => {
       const raw = await r.text();
@@ -348,19 +329,6 @@ function testConnection() {
       console.error('Teste de conexão falhou:', e);
     });
 }
-
-// Renova o token CSRF periodicamente para o formulário nunca expirar
-// enquanto a página fica aberta (evita "ação não permitida" ao salvar).
-setInterval(() => {
-  fetch(location.pathname + '?refresh_csrf=1')
-    .then(r => r.json())
-    .then(data => {
-      if (data.token) {
-        document.querySelectorAll('[name=_glpi_csrf_token]').forEach(el => el.value = data.token);
-      }
-    })
-    .catch(() => {}); // falha silenciosa — não atrapalha o uso normal da tela
-}, 5 * 60 * 1000);
 
 function showQrCode() {
   const baileysUrl = document.querySelector('[name=baileys_url]').value.replace(/\/$/, '');
