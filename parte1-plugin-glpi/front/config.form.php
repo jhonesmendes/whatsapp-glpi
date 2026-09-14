@@ -18,6 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
     exit;
 }
 
+// Renova o token CSRF em segundo plano (evita "ação não permitida"
+// quando o usuário demora para preencher o formulário e o token expira)
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['refresh_csrf'])) {
+    header('Content-Type: application/json');
+    echo json_encode(['token' => Session::getNewCSRFToken()]);
+    exit;
+}
+
 // Processa teste de conexão (AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
     // Descarta qualquer saída acidental (avisos do PHP, BOM, etc.)
@@ -319,6 +327,19 @@ function testConnection() {
       console.error('Teste de conexão falhou:', e);
     });
 }
+
+// Renova o token CSRF periodicamente para o formulário nunca expirar
+// enquanto a página fica aberta (evita "ação não permitida" ao salvar).
+setInterval(() => {
+  fetch(location.pathname + '?refresh_csrf=1')
+    .then(r => r.json())
+    .then(data => {
+      if (data.token) {
+        document.querySelectorAll('[name=_glpi_csrf_token]').forEach(el => el.value = data.token);
+      }
+    })
+    .catch(() => {}); // falha silenciosa — não atrapalha o uso normal da tela
+}, 5 * 60 * 1000);
 
 function showQrCode() {
   const baileysUrl = document.querySelector('[name=baileys_url]').value.replace(/\/$/, '');
