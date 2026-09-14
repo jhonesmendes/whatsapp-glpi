@@ -209,9 +209,10 @@ class PluginWhatsappbotConfig extends CommonGLPI {
      * concorrentes, como as desta tela. Ver inc/includes.php do GLPI.
      */
     public static function ajaxUrl(string $file): string {
+        global $CFG_GLPI;
         return (isset($_SERVER['HTTPS']) ? 'https' : 'http')
             . '://' . $_SERVER['HTTP_HOST']
-            . '/plugins/whatsappbot/ajax/' . $file;
+            . $CFG_GLPI['root_doc'] . '/plugins/whatsappbot/ajax/' . $file;
     }
 
     public static function renderStyles(): void {

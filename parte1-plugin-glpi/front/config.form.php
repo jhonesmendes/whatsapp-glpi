@@ -18,9 +18,10 @@ $config = PluginWhatsappbotConfig::getConfig();
 
 Html::header('WhatsApp Bot — Conexão', $_SERVER['PHP_SELF'], 'config', 'PluginWhatsappbotConfig');
 
+global $CFG_GLPI;
 $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     . '://' . $_SERVER['HTTP_HOST']
-    . '/plugins/whatsappbot/webhook.php';
+    . $CFG_GLPI['root_doc'] . '/plugins/whatsappbot/webhook.php';
 
 PluginWhatsappbotConfig::renderStyles();
 ?>
