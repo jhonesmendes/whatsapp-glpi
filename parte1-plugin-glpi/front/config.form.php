@@ -20,8 +20,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
 
 // Processa teste de conexão (AJAX)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
+    // Descarta qualquer saída acidental (avisos do PHP, BOM, etc.)
+    // para garantir que a resposta seja JSON puro.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    ob_start();
     header('Content-Type: application/json');
-    $result = PluginWhatsappbotConfig::testBaileysConnection();
+
+    try {
+        $result = PluginWhatsappbotConfig::testBaileysConnection();
+    } catch (\Throwable $e) {
+        $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
+    }
+
+    ob_end_clean();
     echo json_encode($result);
     exit;
 }
@@ -275,8 +288,19 @@ function testConnection() {
   fd.append('baileys_url', document.querySelector('[name=baileys_url]').value);
   fd.append('baileys_token', document.querySelector('[name=baileys_token]').value);
 
+  fd.append('_glpi_csrf_token', document.querySelector('[name=_glpi_csrf_token]').value);
+
   fetch(location.href, { method: 'POST', body: fd })
-    .then(r => r.json())
+    .then(async r => {
+      const raw = await r.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + raw.substring(0, 200));
+      }
+      return data;
+    })
     .then(data => {
       if (data.ok) {
         dot.className = 'wa-dot green';
@@ -289,6 +313,7 @@ function testConnection() {
     .catch(e => {
       dot.className = 'wa-dot red';
       text.textContent = '❌ Erro de rede: ' + e.message;
+      console.error('Teste de conexão falhou:', e);
     });
 }
 
