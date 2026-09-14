@@ -9,6 +9,30 @@ Session::checkRight('config', UPDATE);
 
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 
+// --- DIAGNÓSTICO TEMPORÁRIO (v3) ---
+// Colocado logo após o checkRight, incondicional, para não depender de
+// nenhuma outra lógica do arquivo. Funciona tanto em GET quanto em POST.
+if (isset($_GET['debug_csrf'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "== DEBUG v3 ==\n";
+    echo "Chegou ate aqui = Session::checkRight passou.\n";
+    echo "Metodo: " . $_SERVER['REQUEST_METHOD'] . "\n";
+    echo "Campos GET: " . implode(', ', array_keys($_GET)) . "\n";
+    echo "Campos POST: " . implode(', ', array_keys($_POST)) . "\n";
+    if (isset($_POST['_whatsappbot_token'])) {
+        $token = $_POST['_whatsappbot_token'];
+        echo "\nToken recebido: $token\n";
+        echo "Validou? " . (PluginWhatsappbotConfig::validateFormToken($token) ? 'SIM' : 'NAO') . "\n";
+        foreach (PluginWhatsappbotConfig::debugFormToken($token) as $k => $v) {
+            echo "$k: $v\n";
+        }
+    } else {
+        echo "\n(nenhum token '_whatsappbot_token' no POST -- normal se foi so um GET de teste)\n";
+    }
+    exit;
+}
+// --- FIM DIAGNÓSTICO TEMPORÁRIO ---
+
 // Processa salvamento
 //
 // OBS: usamos um token anti-CSRF próprio (PluginWhatsappbotConfig::*FormToken)
@@ -21,23 +45,6 @@ include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 // não permitida"). O token próprio é um HMAC (sessão + janela de tempo)
 // que não escreve nada na sessão, então não sofre essa corrida.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-
-    // --- DIAGNÓSTICO TEMPORÁRIO (v2) ---
-    if (isset($_GET['debug_csrf'])) {
-        header('Content-Type: text/plain; charset=utf-8');
-        $received = $_POST['_whatsappbot_token'] ?? '(AUSENTE)';
-        $valid    = PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null);
-        $debug    = PluginWhatsappbotConfig::debugFormToken($_POST['_whatsappbot_token'] ?? null);
-        echo "== DEBUG TOKEN v2 ==\n";
-        echo "Token recebido: $received\n";
-        echo "Validou? " . ($valid ? 'SIM' : 'NAO') . "\n";
-        foreach ($debug as $k => $v) {
-            echo "$k: $v\n";
-        }
-        exit;
-    }
-    // --- FIM DIAGNÓSTICO TEMPORÁRIO ---
-
     if (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
         Html::displayErrorAndDie('Token de formulário inválido ou expirado. Recarregue a página e tente novamente.');
     }
