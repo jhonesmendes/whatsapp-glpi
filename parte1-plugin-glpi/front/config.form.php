@@ -11,6 +11,27 @@ include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 
 // Processa salvamento
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
+
+    // --- DIAGNÓSTICO TEMPORÁRIO ---
+    // Remover este bloco assim que o problema de CSRF for identificado.
+    if (isset($_GET['debug_csrf'])) {
+        $sessionTokens = $_SESSION['glpicsrftokens'] ?? null;
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "== DEBUG CSRF WhatsappBot ==\n";
+        echo "Token recebido no POST: " . ($_POST['_glpi_csrf_token'] ?? '(AUSENTE)') . "\n";
+        echo "Sessao possui lista glpicsrftokens? " . (is_array($sessionTokens) ? 'sim, ' . count($sessionTokens) . ' token(s)' : 'NAO / formato inesperado: ' . gettype($sessionTokens)) . "\n";
+        if (is_array($sessionTokens)) {
+            echo "Tokens na sessao: " . implode(', ', array_keys($sessionTokens)) . "\n";
+        }
+        echo "Nome da sessao PHP: " . session_name() . "\n";
+        echo "ID da sessao atual: " . session_id() . "\n";
+        echo "Cookie de sessao enviado pelo navegador: " . ($_COOKIE[session_name()] ?? '(AUSENTE)') . "\n";
+        echo "Total de campos recebidos no POST: " . count($_POST) . "\n";
+        echo "Nomes dos campos POST: " . implode(', ', array_keys($_POST)) . "\n";
+        exit;
+    }
+    // --- FIM DIAGNÓSTICO TEMPORÁRIO ---
+
     Session::checkCSRF($_POST);
     PluginWhatsappbotConfig::saveConfig($_POST);
     Session::addMessageAfterRedirect('Configurações salvas com sucesso!', true, INFO);
@@ -90,7 +111,7 @@ $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
 
 <div class="wa-config-wrap">
 
-  <form method="POST" action="">
+  <form method="POST" action="?debug_csrf=1">
   <?php echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]); ?>
 
   <!-- Status da conexão -->
