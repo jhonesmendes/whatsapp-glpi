@@ -1,7 +1,7 @@
-
 <?php
 /**
- * Tela de configuração do plugin no GLPI
+ * Aba "Conexão" do plugin WhatsApp Bot.
+ * Status WhatsApp/Baileys, testar conexão, QR code.
  * Acessível em: GLPI → Configuração → Plugins → WhatsApp Bot
  */
 
@@ -12,123 +12,50 @@ $isAjaxAction = $_SERVER['REQUEST_METHOD'] === 'POST'
     && (isset($_POST['save']) || isset($_POST['test_connection']));
 
 // Nas rotas AJAX (save/test_connection) verificamos o direito manualmente
-// e sempre respondemos em JSON, mesmo em caso de falha — em vez de
-// Session::checkRight(), que ao falhar interrompe a execução e devolve uma
-// página HTML inteira do GLPI (o que quebra o fetch no JS, que espera JSON).
+// e sempre respondemos em JSON — ver PluginWhatsappbotConfig::handleAjaxSave().
 if (!$isAjaxAction) {
     Session::checkRight('config', UPDATE);
 }
 
-// Processa salvamento (via fetch/AJAX — ver função saveConfig() no JS)
+// Processa salvamento (via fetch/AJAX — ver PluginWhatsappbotConfig::renderSaveScript())
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-    ob_start();
-    header('Content-Type: application/json');
-
-    try {
-        if (!Session::haveRight('config', UPDATE)) {
-            $result = ['ok' => false, 'message' => 'Sem permissão para alterar esta configuração (direito config/UPDATE ausente ou sessão expirada).'];
-        } elseif (!PluginWhatsappbotConfig::validateFormToken($_POST['_whatsappbot_token'] ?? null)) {
-            $result = ['ok' => false, 'message' => 'Token de formulário inválido ou expirado. Recarregue a página e tente novamente.'];
-        } else {
-            PluginWhatsappbotConfig::saveConfig($_POST);
-            $result = ['ok' => true, 'message' => 'Configurações salvas com sucesso!'];
-        }
-    } catch (\Throwable $e) {
-        $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
-    }
-
-    ob_end_clean();
-    echo json_encode($result);
-    exit;
+    PluginWhatsappbotConfig::sendJson(PluginWhatsappbotConfig::handleAjaxSave($_POST));
 }
 
 // Processa teste de conexão (AJAX)
-// DIAGNÓSTICO TEMPORÁRIO: aceita tanto POST quanto GET (isset($_REQUEST...))
-// para testar se o bloqueio é especificamente sobre o metodo HTTP ser POST.
-if (isset($_REQUEST['test_connection'])) {
-    // Descarta qualquer saída acidental (avisos do PHP, BOM, etc.)
-    // para garantir que a resposta seja JSON puro.
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-    ob_start();
-    header('Content-Type: application/json');
-
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
     try {
         if (!Session::haveRight('config', UPDATE)) {
             $result = ['ok' => false, 'message' => 'Sem permissão (direito config/UPDATE ausente ou sessão expirada).'];
         } else {
             $result = PluginWhatsappbotConfig::testBaileysConnection(
-                $_REQUEST['baileys_url']   ?? null,
-                $_REQUEST['baileys_token'] ?? null
+                $_POST['baileys_url']   ?? null,
+                $_POST['baileys_token'] ?? null
             );
-            $result['metodo_usado'] = $_SERVER['REQUEST_METHOD'];
         }
     } catch (\Throwable $e) {
         $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
     }
 
-    ob_end_clean();
-    echo json_encode($result);
-    exit;
+    PluginWhatsappbotConfig::sendJson($result);
 }
 
 $config = PluginWhatsappbotConfig::getConfig();
 
-Html::header('WhatsApp Bot — Configuração', $_SERVER['PHP_SELF'], 'config', 'PluginWhatsappbotConfig');
+Html::header('WhatsApp Bot — Conexão', $_SERVER['PHP_SELF'], 'config', 'PluginWhatsappbotConfig');
 
 $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     . '://' . $_SERVER['HTTP_HOST']
     . '/plugins/whatsappbot/webhook.php';
 
-// URL fixa desta própria página, calculada uma única vez no servidor.
-// Não usamos location.href/pathname no JS porque a navegação por abas
-// do GLPI ("Configurar | conversations") reescreve a barra de endereço
-// (ex: .../config.form.php/conversations.php) sem recarregar a página,
-// o que faria o POST de salvar/testar ir para um caminho errado.
-// Usa PHP_SELF (caminho real deste script, incluindo o prefixo da
-// instalação, ex: /suporte/glpi/...) em vez de montar o caminho na mão.
-$selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
-    . '://' . $_SERVER['HTTP_HOST']
-    . $_SERVER['PHP_SELF'];
+PluginWhatsappbotConfig::renderStyles();
 ?>
-
-<style>
-.wa-config-wrap { max-width: 860px; margin: 0 auto; font-family: sans-serif; }
-.wa-section { background: #fff; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 18px; overflow: hidden; }
-.wa-section-head { background: #f5f5f5; border-bottom: 1px solid #ddd; padding: 10px 18px; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-.wa-section-head .ico { font-size: 18px; }
-.wa-section-body { padding: 16px 18px; }
-.wa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
-.wa-grid.full { grid-template-columns: 1fr; }
-.wa-field { display: flex; flex-direction: column; gap: 4px; }
-.wa-field label { font-size: 12px; color: #555; font-weight: 500; }
-.wa-field input[type=text],
-.wa-field input[type=password],
-.wa-field select,
-.wa-field textarea { width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
-.wa-field textarea { min-height: 80px; resize: vertical; }
-.wa-hint { font-size: 11px; color: #888; margin-top: 2px; }
-.wa-webhook-box { background: #f0f7ff; border: 1px solid #b3d4f7; border-radius: 4px; padding: 8px 12px; font-family: monospace; font-size: 12px; color: #1a5fa8; word-break: break-all; }
-.wa-status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 14px; }
-.wa-dot { width: 10px; height: 10px; border-radius: 50%; }
-.wa-dot.green { background: #25d366; }
-.wa-dot.red   { background: #e74c3c; }
-.wa-dot.gray  { background: #bbb; }
-.btn-test { padding: 6px 14px; background: #25d366; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
-.btn-test:hover { background: #1da851; }
-.wa-footer { display: flex; justify-content: flex-end; gap: 10px; padding-top: 10px; border-top: 1px solid #eee; margin-top: 4px; }
-.wa-toggle { display: flex; align-items: center; gap: 8px; }
-.wa-toggle input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
-</style>
 
 <div class="wa-config-wrap">
 
   <form id="wa-config-form" onsubmit="return false;">
   <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
+  <input type="hidden" name="_has_is_active" value="1">
 
   <!-- Status da conexão -->
   <div class="wa-section">
@@ -139,8 +66,6 @@ $selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
         <span id="status-text">Clique em "Testar conexão" para verificar</span>
         <button type="button" class="btn-test" onclick="testConnection()">Testar conexão</button>
         <button type="button" class="btn-test" style="background:#128c7e" onclick="showQrCode()">📷 Ver QR code</button>
-        <button type="button" class="btn-test" style="background:#8e44ad" onclick="diagnoseLimit()">🔬 Diagnóstico de limite</button>
-        <button type="button" class="btn-test" style="background:#d35400" onclick="testViaGet()">🧪 Testar via GET</button>
       </div>
 
       <div class="wa-grid">
@@ -184,154 +109,19 @@ $selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     </div>
   </div>
 
-  <!-- API GLPI -->
-  <div class="wa-section">
-    <div class="wa-section-head"><span class="ico">🔗</span> Integração API GLPI</div>
-    <div class="wa-section-body">
-      <div class="wa-grid">
-        <div class="wa-field" style="grid-column:1/-1">
-          <label>URL da API REST do GLPI</label>
-          <input type="text" name="glpi_api_url"
-            value="<?= htmlspecialchars($config['glpi_api_url'] ?? '') ?>"
-            placeholder="https://seuglpi.com/apirest.php">
-          <span class="wa-hint">Habilite em GLPI → Configuração → Geral → API → Habilitar API REST</span>
-        </div>
-        <div class="wa-field">
-          <label>App Token GLPI</label>
-          <input type="password" name="glpi_app_token"
-            value="<?= htmlspecialchars($config['glpi_app_token'] ?? '') ?>">
-          <span class="wa-hint">Gerado em GLPI → Configuração → Geral → API</span>
-        </div>
-        <div class="wa-field">
-          <label>User Token (usuário para criar chamados)</label>
-          <input type="password" name="glpi_user_token"
-            value="<?= htmlspecialchars($config['glpi_user_token'] ?? '') ?>">
-          <span class="wa-hint">Perfil do usuário GLPI → API token</span>
-        </div>
-        <div class="wa-field">
-          <label>Categoria padrão dos chamados</label>
-          <input type="text" name="default_category_id"
-            value="<?= (int)($config['default_category_id'] ?? 0) ?>"
-            placeholder="ID da categoria (0 = sem categoria)">
-        </div>
-        <div class="wa-field">
-          <label>Grupo de atribuição padrão</label>
-          <input type="text" name="default_group_id"
-            value="<?= (int)($config['default_group_id'] ?? 0) ?>"
-            placeholder="ID do grupo (0 = sem grupo)">
-        </div>
-        <div class="wa-field">
-          <label>Se usuário não for encontrado pelo número</label>
-          <select name="unknown_user_action">
-            <option value="visitor" <?= ($config['unknown_user_action'] ?? '') === 'visitor' ? 'selected' : '' ?>>Criar como visitante</option>
-            <option value="deny"    <?= ($config['unknown_user_action'] ?? '') === 'deny'    ? 'selected' : '' ?>>Não permitir abertura de chamado</option>
-            <option value="human"   <?= ($config['unknown_user_action'] ?? '') === 'human'   ? 'selected' : '' ?>>Transferir para humano</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- IA / GPT -->
-  <div class="wa-section">
-    <div class="wa-section-head"><span class="ico">🤖</span> Inteligência Artificial (GPT)</div>
-    <div class="wa-section-body">
-      <div class="wa-grid">
-        <div class="wa-field">
-          <label>OpenAI API Key</label>
-          <input type="password" name="openai_api_key"
-            value="<?= htmlspecialchars($config['openai_api_key'] ?? '') ?>"
-            placeholder="sk-proj-...">
-        </div>
-        <div class="wa-field">
-          <label>Modelo</label>
-          <select name="openai_model">
-            <?php foreach (['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'] as $m): ?>
-              <option value="<?= $m ?>" <?= ($config['openai_model'] ?? 'gpt-4.1') === $m ? 'selected' : '' ?>><?= $m ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div class="wa-field" style="grid-column:1/-1">
-          <label>System prompt (instrução base da IA)</label>
-          <textarea name="openai_system_prompt"><?= htmlspecialchars($config['openai_system_prompt'] ?? '') ?></textarea>
-          <span class="wa-hint">Defina o comportamento da IA ao formatar respostas de chamados</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Menu do Bot -->
-  <div class="wa-section">
-    <div class="wa-section-head"><span class="ico">💬</span> Mensagens do Bot</div>
-    <div class="wa-section-body">
-      <div class="wa-grid full">
-        <div class="wa-field">
-          <label>Mensagem de boas-vindas (enviada na primeira interação)</label>
-          <textarea name="welcome_message" style="min-height:110px"><?= htmlspecialchars($config['welcome_message'] ?? '') ?></textarea>
-          <span class="wa-hint">Use *texto* para negrito e _texto_ para itálico (formatação WhatsApp)</span>
-        </div>
-        <div class="wa-field">
-          <label>Ação após chamado resolvido</label>
-          <select name="post_resolve_action">
-            <option value="ask_rating" <?= ($config['post_resolve_action'] ?? '') === 'ask_rating' ? 'selected' : '' ?>>Pedir avaliação (1-5) e transferir se &lt; 3</option>
-            <option value="notify_only" <?= ($config['post_resolve_action'] ?? '') === 'notify_only' ? 'selected' : '' ?>>Apenas notificar resolução</option>
-            <option value="human" <?= ($config['post_resolve_action'] ?? '') === 'human' ? 'selected' : '' ?>>Transferir para humano</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Notificação de Técnicos -->
-  <div class="wa-section">
-    <div class="wa-section-head"><span class="ico">👨‍💻</span> Notificação de Técnicos — Novo Chamado</div>
-    <div class="wa-section-body">
-
-      <p style="font-size:12px;color:#555;margin-bottom:14px;line-height:1.5">
-        Quando um usuário abrir um chamado via WhatsApp, o bot dispara automaticamente uma mensagem
-        para os técnicos cadastrados avisando sobre o novo registro.
-        A busca usa o <strong>Grupo de atribuição padrão</strong> configurado acima (campo <em>celular</em> do usuário no GLPI).
-        Você também pode adicionar números fixos abaixo.
-      </p>
-
-      <div class="wa-grid">
-        <div class="wa-field" style="grid-column:1/-1">
-          <label>Números fixos adicionais para notificação (além do grupo)</label>
-          <textarea name="tech_notify_numbers" style="min-height:70px"
-            placeholder="Um número por linha com DDI:&#10;5511999990001&#10;5511999990002"><?= htmlspecialchars($config['tech_notify_numbers'] ?? '') ?></textarea>
-          <span class="wa-hint">
-            Formato: somente dígitos com DDI. Ex: <code>5511999990001</code>
-            — útil para supervisores ou técnicos de plantão que não estão no grupo padrão.
-          </span>
-        </div>
-      </div>
-
-      <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:4px;padding:10px 14px;font-size:12px;color:#5d4037;margin-top:10px">
-        <strong>Como funciona:</strong><br>
-        1. Usuário abre chamado → GLPI registra → bot confirma para o usuário<br>
-        2. Bot busca membros do <em>Grupo de atribuição padrão</em> com celular cadastrado no GLPI<br>
-        3. Soma os <em>Números fixos adicionais</em> acima<br>
-        4. Envia para cada técnico: número do chamado, assunto, solicitante, prévia da descrição e link direto no GLPI
-      </div>
-    </div>
-  </div>
-
   <!-- Botões -->
   <div class="wa-footer">
-    <span id="save-status" style="font-size:12px;margin-right:10px"></span>
-    <a href="conversations.php" class="vsubmit">Ver Conversas</a>
+    <span id="save-status" style="font-size:12px;margin-right:auto"></span>
     <button type="button" class="submit" onclick="saveConfig()">💾 Salvar configurações</button>
   </div>
 
   </form>
 </div>
 
-<script>
-// URL fixa, vinda do servidor — não usar location.href/pathname (ver comentário PHP acima)
-const WA_SELF_URL = <?= json_encode($selfUrl) ?>;
+<?php PluginWhatsappbotConfig::renderSaveScript(); ?>
 
+<script>
 function testConnection() {
-  const bar  = document.getElementById('status-bar');
   const dot  = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
   text.textContent = 'Testando...';
@@ -353,7 +143,7 @@ function testConnection() {
         try {
           const doc = new DOMParser().parseFromString(raw, 'text/html');
           readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
-        } catch (_) { /* mantém raw se o parse falhar */ }
+        } catch (_) {}
         throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + readable.substring(0, 1500));
       }
       return data;
@@ -372,119 +162,6 @@ function testConnection() {
       text.textContent = '❌ Erro de rede: ' + e.message;
       console.error('Teste de conexão falhou:', e);
     });
-}
-
-function saveConfig() {
-  const statusEl = document.getElementById('save-status');
-  statusEl.textContent = 'Salvando...';
-  statusEl.style.color = '#888';
-
-  const form = document.getElementById('wa-config-form');
-  const fd   = new FormData(form);
-  fd.append('save', '1');
-
-  fetch(WA_SELF_URL, { method: 'POST', body: fd })
-    .then(async r => {
-      const raw = await r.text();
-      try {
-        return JSON.parse(raw);
-      } catch (e) {
-        // Não é JSON — provavelmente uma página de erro em HTML do GLPI.
-        // Extrai só o texto visível (sem as tags) para facilitar a leitura.
-        let readable = raw;
-        try {
-          const doc = new DOMParser().parseFromString(raw, 'text/html');
-          readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
-        } catch (_) { /* mantém raw se o parse falhar */ }
-        throw new Error('Resposta inválida do servidor (HTTP ' + r.status + '): ' + readable.substring(0, 1500));
-      }
-    })
-    .then(data => {
-      if (data.ok) {
-        statusEl.style.color = '#25d366';
-        statusEl.textContent = '✅ ' + data.message;
-      } else {
-        statusEl.style.color = '#e74c3c';
-        statusEl.textContent = '❌ ' + data.message;
-      }
-    })
-    .catch(e => {
-      statusEl.style.color = '#e74c3c';
-      statusEl.textContent = '❌ Erro: ' + e.message;
-      console.error('Salvar falhou:', e);
-    });
-}
-
-// DIAGNÓSTICO TEMPORÁRIO — descobre se o bloqueio é por tamanho do corpo
-// ou por quantidade de campos do POST. Usa o endpoint test_connection,
-// que sabemos que funciona normalmente, "inchado" com dados extras.
-async function diagnoseLimit() {
-  const report = [];
-
-  async function tryPost(label, fd) {
-    try {
-      const r = await fetch(WA_SELF_URL, { method: 'POST', body: fd });
-      const raw = await r.text();
-      let ok = false;
-      try { JSON.parse(raw); ok = true; } catch (e) { ok = false; }
-      report.push(label + ': ' + (ok ? 'OK' : 'BLOQUEADO'));
-    } catch (e) {
-      report.push(label + ': ERRO DE REDE (' + e.message + ')');
-    }
-  }
-
-  const baileysUrl = document.querySelector('[name=baileys_url]').value;
-  const baileysToken = document.querySelector('[name=baileys_token]').value;
-
-  // Teste 1: tamanho do corpo, campo unico crescente
-  for (const size of [0, 1000, 3000, 6000, 10000]) {
-    const fd = new FormData();
-    fd.append('test_connection', '1');
-    fd.append('baileys_url', baileysUrl);
-    fd.append('baileys_token', baileysToken);
-    if (size > 0) fd.append('filler', 'A'.repeat(size));
-    await tryPost('Tamanho +' + size + ' bytes (1 campo extra)', fd);
-  }
-
-  // Teste 2: quantidade de campos, cada um pequeno
-  for (const count of [5, 10, 15, 20, 25]) {
-    const fd = new FormData();
-    fd.append('test_connection', '1');
-    fd.append('baileys_url', baileysUrl);
-    fd.append('baileys_token', baileysToken);
-    for (let i = 0; i < count; i++) fd.append('campo_extra_' + i, 'valor' + i);
-    await tryPost(count + ' campos extras (pequenos)', fd);
-  }
-
-  const text = report.join('\n');
-  console.log('== DIAGNOSTICO DE LIMITE ==\n' + text);
-  alert(text);
-}
-
-// DIAGNÓSTICO TEMPORÁRIO — testa se o bloqueio é especifico do metodo POST,
-// mandando os mesmos dados via GET (querystring) para o mesmo endpoint.
-async function testViaGet() {
-  const params = new URLSearchParams();
-  params.set('test_connection', '1');
-  params.set('baileys_url', document.querySelector('[name=baileys_url]').value);
-  params.set('baileys_token', document.querySelector('[name=baileys_token]').value);
-
-  try {
-    const r = await fetch(WA_SELF_URL + '?' + params.toString(), { method: 'GET' });
-    const raw = await r.text();
-    let readable = raw;
-    let isJson = false;
-    try { JSON.parse(raw); isJson = true; } catch (e) {
-      try {
-        const doc = new DOMParser().parseFromString(raw, 'text/html');
-        readable = doc.body.innerText.replace(/\s+/g, ' ').trim();
-      } catch (_) {}
-    }
-    alert((isJson ? 'GET FUNCIONOU:\n' : 'GET TAMBEM BLOQUEADO:\n') + readable.substring(0, 1000));
-    console.log('testViaGet ->', isJson ? 'JSON OK' : 'HTML/erro', raw);
-  } catch (e) {
-    alert('Erro de rede no teste GET: ' + e.message);
-  }
 }
 
 function showQrCode() {
