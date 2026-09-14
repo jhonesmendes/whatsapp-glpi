@@ -5,17 +5,9 @@
  */
 
 include('../../../inc/includes.php');
+Session::checkRight('config', UPDATE);
+
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
-
-$isAjaxAction = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save']);
-
-if (!$isAjaxAction) {
-    Session::checkRight('config', UPDATE);
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-    PluginWhatsappbotConfig::sendJson(PluginWhatsappbotConfig::handleAjaxSave($_POST));
-}
 
 $config = PluginWhatsappbotConfig::getConfig();
 
@@ -27,7 +19,6 @@ PluginWhatsappbotConfig::renderStyles();
 <div class="wa-config-wrap">
 
   <form id="wa-config-form" onsubmit="return false;">
-  <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
 
   <div class="wa-section">
     <div class="wa-section-head"><span class="ico">🤖</span> Inteligência Artificial (GPT)</div>

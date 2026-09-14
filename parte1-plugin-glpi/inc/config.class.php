@@ -100,14 +100,17 @@ class PluginWhatsappbotConfig extends CommonGLPI {
      * Handler compartilhado para o "Salvar" de qualquer aba via AJAX.
      * Sempre retorna um array pronto para json_encode — nunca lança nem
      * deixa o GLPI renderizar uma página de erro em HTML no meio do fetch.
+     *
+     * A validação de CSRF acontece automaticamente pelo próprio núcleo do
+     * GLPI (inc/includes.php) antes deste código rodar, desde que a
+     * requisição seja feita para uma URL sob .../ajax/ com o header
+     * "X-Glpi-Csrf-Token" — ver PluginWhatsappbotConfig::ajaxUrl() e
+     * renderSaveScript(). Não precisamos (nem devemos) checar de novo aqui.
      */
     public static function handleAjaxSave(array $data): array {
         try {
             if (!Session::haveRight('config', UPDATE)) {
                 return ['ok' => false, 'message' => 'Sem permissão para alterar esta configuração (direito config/UPDATE ausente ou sessão expirada).'];
-            }
-            if (!self::validateFormToken($data['_whatsappbot_token'] ?? null)) {
-                return ['ok' => false, 'message' => 'Token de formulário inválido ou expirado. Recarregue a página e tente novamente.'];
             }
             self::saveConfig($data);
             return ['ok' => true, 'message' => 'Configurações salvas com sucesso!'];
@@ -119,93 +122,6 @@ class PluginWhatsappbotConfig extends CommonGLPI {
     // ---------------------------------------------------------------
     // Menu GLPI
     // ---------------------------------------------------------------
-
-    // ---------------------------------------------------------------
-    // Token anti-CSRF próprio (sem depender de $_SESSION['glpicsrftokens'])
-    // ---------------------------------------------------------------
-    //
-    // Session::checkCSRF() nativo do GLPI guarda os tokens válidos num
-    // array dentro de $_SESSION. Em telas com bastante atividade AJAX de
-    // fundo (menu, notificações, busca), pedidos concorrentes podem gravar
-    // a sessão de volta com uma cópia desatualizada e apagar o token que
-    // acabou de ser gerado — falso positivo de "ação não permitida".
-    //
-    // Para evitar essa corrida, geramos um token que não escreve nada na
-    // sessão: é um HMAC de (id da sessão + janela de tempo) usando um
-    // segredo mantido só no servidor. A validação recalcula o HMAC e
-    // compara — sem precisar consultar nenhum estado mutável.
-
-    const CSRF_WINDOW_SECONDS = 1800; // 30 minutos por janela (token válido por até ~1h)
-
-    private static function getCsrfSecretPath(): string {
-        return GLPI_ROOT . '/plugins/whatsappbot/config/csrf_secret.php';
-    }
-
-    private static function getCsrfSecret(): string {
-        $path = self::getCsrfSecretPath();
-
-        if (is_file($path)) {
-            $secret = include $path;
-            if (is_string($secret) && strlen($secret) >= 32) {
-                return $secret;
-            }
-        }
-
-        $secret = bin2hex(random_bytes(32));
-        $dir    = dirname($path);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0750, true);
-        }
-        file_put_contents($path, "<?php\nreturn " . var_export($secret, true) . ";\n");
-        return $secret;
-    }
-
-    public static function generateFormToken(): string {
-        $window = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
-        return hash_hmac('sha256', session_id() . '|' . $window, self::getCsrfSecret());
-    }
-
-    /**
-     * Utilitário de diagnóstico — retorna detalhes internos do cálculo do
-     * token, útil para investigar falhas de validação caso reapareçam.
-     */
-    public static function debugFormToken(?string $token): array {
-        $path      = self::getCsrfSecretPath();
-        $dir       = dirname($path);
-        $fileExisted = is_file($path);
-        $secret    = self::getCsrfSecret(); // pode criar o arquivo agora, se ainda não existir
-        $nowWindow = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
-
-        return [
-            'session_id'            => session_id(),
-            'config_dir'            => $dir,
-            'config_dir_existe'     => is_dir($dir) ? 'sim' : 'nao',
-            'config_dir_gravavel'   => is_writable($dir) ? 'sim' : (is_dir($dir) ? 'nao' : 'n/a (dir nao existe)'),
-            'secret_arquivo_existia_antes' => $fileExisted ? 'sim' : 'nao',
-            'secret_arquivo_existe_agora'  => is_file($path) ? 'sim' : 'nao',
-            'secret_arquivo_gravavel'      => is_file($path) ? (is_writable($path) ? 'sim' : 'nao') : 'n/a',
-            'secret_primeiros_8_chars'     => substr($secret, 0, 8),
-            'janela_atual'          => $nowWindow,
-            'token_esperado_janela_atual'    => hash_hmac('sha256', session_id() . '|' . $nowWindow, $secret),
-            'token_esperado_janela_anterior' => hash_hmac('sha256', session_id() . '|' . ($nowWindow - 1), $secret),
-        ];
-    }
-
-    public static function validateFormToken(?string $token): bool {
-        if (empty($token)) {
-            return false;
-        }
-        $secret = self::getCsrfSecret();
-        $nowWindow = (int) floor(time() / self::CSRF_WINDOW_SECONDS);
-        // Aceita a janela atual e a anterior (evita falha na borda do intervalo)
-        foreach ([$nowWindow, $nowWindow - 1] as $window) {
-            $expected = hash_hmac('sha256', session_id() . '|' . $window, $secret);
-            if (hash_equals($expected, $token)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     static function getMenuName()    { return 'WhatsApp Bot'; }
     static function getMenuContent() {
@@ -284,6 +200,20 @@ class PluginWhatsappbotConfig extends CommonGLPI {
             . $_SERVER['PHP_SELF'];
     }
 
+    /**
+     * URL de um endpoint AJAX do plugin (plugins/whatsappbot/ajax/$file).
+     * Requisições POST para caminhos sob .../ajax/ são tratadas de forma
+     * especial pelo núcleo do GLPI: o token CSRF é lido do header
+     * "X-Glpi-Csrf-Token" (não do corpo do POST) e não é invalidado a
+     * cada chamada — pensado exatamente para múltiplas chamadas AJAX
+     * concorrentes, como as desta tela. Ver inc/includes.php do GLPI.
+     */
+    public static function ajaxUrl(string $file): string {
+        return (isset($_SERVER['HTTPS']) ? 'https' : 'http')
+            . '://' . $_SERVER['HTTP_HOST']
+            . '/plugins/whatsappbot/ajax/' . $file;
+    }
+
     public static function renderStyles(): void {
         ?>
         <style>
@@ -324,10 +254,12 @@ class PluginWhatsappbotConfig extends CommonGLPI {
      * tradicional de página inteira).
      */
     public static function renderSaveScript(): void {
-        $selfUrl = self::selfUrl();
+        $saveUrl = self::ajaxUrl('save.php');
+        $csrf    = Session::getNewCSRFToken();
         ?>
         <script>
-        const WA_SELF_URL = <?= json_encode($selfUrl) ?>;
+        const WA_SAVE_URL  = <?= json_encode($saveUrl) ?>;
+        const WA_CSRF_TOKEN = <?= json_encode($csrf) ?>;
 
         function saveConfig() {
           const statusEl = document.getElementById('save-status');
@@ -336,9 +268,12 @@ class PluginWhatsappbotConfig extends CommonGLPI {
 
           const form = document.getElementById('wa-config-form');
           const fd   = new FormData(form);
-          fd.append('save', '1');
 
-          fetch(WA_SELF_URL, { method: 'POST', body: fd })
+          fetch(WA_SAVE_URL, {
+            method: 'POST',
+            body: fd,
+            headers: { 'X-Glpi-Csrf-Token': WA_CSRF_TOKEN }
+          })
             .then(async r => {
               const raw = await r.text();
               try {

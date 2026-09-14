@@ -3,42 +3,16 @@
  * Aba "Conexão" do plugin WhatsApp Bot.
  * Status WhatsApp/Baileys, testar conexão, QR code.
  * Acessível em: GLPI → Configuração → Plugins → WhatsApp Bot
+ *
+ * Salvar e testar conexão são feitos via fetch para plugins/whatsappbot/ajax/
+ * (ver PluginWhatsappbotConfig::renderSaveScript()) — este arquivo só
+ * renderiza a página (GET).
  */
 
 include('../../../inc/includes.php');
+Session::checkRight('config', UPDATE);
+
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
-
-$isAjaxAction = $_SERVER['REQUEST_METHOD'] === 'POST'
-    && (isset($_POST['save']) || isset($_POST['test_connection']));
-
-// Nas rotas AJAX (save/test_connection) verificamos o direito manualmente
-// e sempre respondemos em JSON — ver PluginWhatsappbotConfig::handleAjaxSave().
-if (!$isAjaxAction) {
-    Session::checkRight('config', UPDATE);
-}
-
-// Processa salvamento (via fetch/AJAX — ver PluginWhatsappbotConfig::renderSaveScript())
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save'])) {
-    PluginWhatsappbotConfig::sendJson(PluginWhatsappbotConfig::handleAjaxSave($_POST));
-}
-
-// Processa teste de conexão (AJAX)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_connection'])) {
-    try {
-        if (!Session::haveRight('config', UPDATE)) {
-            $result = ['ok' => false, 'message' => 'Sem permissão (direito config/UPDATE ausente ou sessão expirada).'];
-        } else {
-            $result = PluginWhatsappbotConfig::testBaileysConnection(
-                $_POST['baileys_url']   ?? null,
-                $_POST['baileys_token'] ?? null
-            );
-        }
-    } catch (\Throwable $e) {
-        $result = ['ok' => false, 'message' => 'Erro interno: ' . $e->getMessage()];
-    }
-
-    PluginWhatsappbotConfig::sendJson($result);
-}
 
 $config = PluginWhatsappbotConfig::getConfig();
 
@@ -54,7 +28,6 @@ PluginWhatsappbotConfig::renderStyles();
 <div class="wa-config-wrap">
 
   <form id="wa-config-form" onsubmit="return false;">
-  <?php echo Html::hidden('_whatsappbot_token', ['value' => PluginWhatsappbotConfig::generateFormToken()]); ?>
   <input type="hidden" name="_has_is_active" value="1">
 
   <!-- Status da conexão -->
@@ -121,6 +94,8 @@ PluginWhatsappbotConfig::renderStyles();
 <?php PluginWhatsappbotConfig::renderSaveScript(); ?>
 
 <script>
+const WA_TEST_CONNECTION_URL = <?= json_encode(PluginWhatsappbotConfig::ajaxUrl('test_connection.php')) ?>;
+
 function testConnection() {
   const dot  = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
@@ -128,11 +103,14 @@ function testConnection() {
   dot.className = 'wa-dot gray';
 
   const fd = new FormData();
-  fd.append('test_connection', '1');
   fd.append('baileys_url', document.querySelector('[name=baileys_url]').value);
   fd.append('baileys_token', document.querySelector('[name=baileys_token]').value);
 
-  fetch(WA_SELF_URL, { method: 'POST', body: fd })
+  fetch(WA_TEST_CONNECTION_URL, {
+    method: 'POST',
+    body: fd,
+    headers: { 'X-Glpi-Csrf-Token': WA_CSRF_TOKEN }
+  })
     .then(async r => {
       const raw = await r.text();
       let data;
