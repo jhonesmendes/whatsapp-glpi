@@ -135,6 +135,7 @@ $selfUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
         <span id="status-text">Clique em "Testar conexão" para verificar</span>
         <button type="button" class="btn-test" onclick="testConnection()">Testar conexão</button>
         <button type="button" class="btn-test" style="background:#128c7e" onclick="showQrCode()">📷 Ver QR code</button>
+        <button type="button" class="btn-test" style="background:#8e44ad" onclick="diagnoseLimit()">🔬 Diagnóstico de limite</button>
       </div>
 
       <div class="wa-grid">
@@ -407,6 +408,52 @@ function saveConfig() {
       statusEl.textContent = '❌ Erro: ' + e.message;
       console.error('Salvar falhou:', e);
     });
+}
+
+// DIAGNÓSTICO TEMPORÁRIO — descobre se o bloqueio é por tamanho do corpo
+// ou por quantidade de campos do POST. Usa o endpoint test_connection,
+// que sabemos que funciona normalmente, "inchado" com dados extras.
+async function diagnoseLimit() {
+  const report = [];
+
+  async function tryPost(label, fd) {
+    try {
+      const r = await fetch(WA_SELF_URL, { method: 'POST', body: fd });
+      const raw = await r.text();
+      let ok = false;
+      try { JSON.parse(raw); ok = true; } catch (e) { ok = false; }
+      report.push(label + ': ' + (ok ? 'OK' : 'BLOQUEADO'));
+    } catch (e) {
+      report.push(label + ': ERRO DE REDE (' + e.message + ')');
+    }
+  }
+
+  const baileysUrl = document.querySelector('[name=baileys_url]').value;
+  const baileysToken = document.querySelector('[name=baileys_token]').value;
+
+  // Teste 1: tamanho do corpo, campo unico crescente
+  for (const size of [0, 1000, 3000, 6000, 10000]) {
+    const fd = new FormData();
+    fd.append('test_connection', '1');
+    fd.append('baileys_url', baileysUrl);
+    fd.append('baileys_token', baileysToken);
+    if (size > 0) fd.append('filler', 'A'.repeat(size));
+    await tryPost('Tamanho +' + size + ' bytes (1 campo extra)', fd);
+  }
+
+  // Teste 2: quantidade de campos, cada um pequeno
+  for (const count of [5, 10, 15, 20, 25]) {
+    const fd = new FormData();
+    fd.append('test_connection', '1');
+    fd.append('baileys_url', baileysUrl);
+    fd.append('baileys_token', baileysToken);
+    for (let i = 0; i < count; i++) fd.append('campo_extra_' + i, 'valor' + i);
+    await tryPost(count + ' campos extras (pequenos)', fd);
+  }
+
+  const text = report.join('\n');
+  console.log('== DIAGNOSTICO DE LIMITE ==\n' + text);
+  alert(text);
 }
 
 function showQrCode() {
