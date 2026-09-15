@@ -1,0 +1,26 @@
+2026-09-14 21:27:59 IN  [27762752512242@lid] Bom dia
+2026-09-14 21:28:00 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em http://fibraforte.web1155.kinghost.net/suporte/glpi/apirest.php/#ERROR_WRONG_APP
+2026-09-14 21:28:00 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em http:\/\/fibraforte.web1155.kinghost.net\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 21:37:24 IN  [27762752512242@lid] Oiii
+2026-09-14 21:37:24 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em http://fibraforte.web1155.kinghost.net/suporte/glpi/apirest.php/#ERROR_WRONG_APP
+2026-09-14 21:37:24 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em http:\/\/fibraforte.web1155.kinghost.net\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 21:37:40 IN  [27762752512242@lid] 1
+2026-09-14 21:37:55 IN  [27762752512242@lid] Internet lenta
+2026-09-14 21:37:56 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em http://fibraforte.web1155.kinghost.net/suporte/glpi/apirest.php/#ERROR_WRONG_APP
+2026-09-14 21:37:56 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em http:\/\/fibraforte.web1155.kinghost.net\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 21:37:57 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em http://fibraforte.web1155.kinghost.net/suporte/glpi/apirest.php/#ERROR_WRONG_APP
+2026-09-14 21:37:57 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em http:\/\/fibraforte.web1155.kinghost.net\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 22:07:29 IN  [27762752512242@lid] Ola
+2026-09-14 22:07:34 IN  [27762752512242@lid] 1
+2026-09-14 22:07:43 IN  [27762752512242@lid] Internet lenta
+2026-09-14 22:07:44 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em https://fibraforte.agr.br/suporte/glpi/apirest.php/#ERROR_WRONG_APP_TOKEN_PARAME
+2026-09-14 22:07:44 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em https:\/\/fibraforte.agr.br\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 22:07:44 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em https://fibraforte.agr.br/suporte/glpi/apirest.php/#ERROR_WRONG_APP_TOKEN_PARAME
+2026-09-14 22:07:44 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em https:\/\/fibraforte.agr.br\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 22:08:18 IN  [27762752512242@lid] Olá
+2026-09-14 22:08:23 IN  [27762752512242@lid] 1
+2026-09-14 22:08:43 IN  [27762752512242@lid] Meu e-mail não está funcionando
+2026-09-14 22:08:44 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em https://fibraforte.agr.br/suporte/glpi/apirest.php/#ERROR_WRONG_APP_TOKEN_PARAME
+2026-09-14 22:08:44 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em https:\/\/fibraforte.agr.br\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]
+2026-09-14 22:08:45 API GLPI API GET /initSession HTTP 400: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o parâmetro app_token parece ser inválido; ver documentação em seu navegador em https://fibraforte.agr.br/suporte/glpi/apirest.php/#ERROR_WRONG_APP_TOKEN_PARAME
+2026-09-14 22:08:45 API initSession falhou: ["ERROR_WRONG_APP_TOKEN_PARAMETER","o par\u00e2metro app_token parece ser inv\u00e1lido; ver documenta\u00e7\u00e3o em seu navegador em https:\/\/fibraforte.agr.br\/suporte\/glpi\/apirest.php\/#ERROR_WRONG_APP_TOKEN_PARAMETER"]

@@ -28,9 +28,12 @@ class PluginWhatsappbotGlpiApi {
     private function initSession(): bool {
         if ($this->sessionToken) return true;
 
+        // Não repete "App-Token" aqui — request() já inclui esse header em
+        // todas as chamadas (defaultHeaders). Repeti-lo faz o Apache/PHP
+        // combinar os dois valores num único header, o que o GLPI rejeita
+        // como app_token inválido mesmo com o token correto configurado.
         $resp = $this->request('GET', '/initSession', [], [
             'Authorization: user_token ' . $this->userToken,
-            'App-Token: ' . $this->appToken,
         ]);
 
         if (isset($resp['session_token'])) {
