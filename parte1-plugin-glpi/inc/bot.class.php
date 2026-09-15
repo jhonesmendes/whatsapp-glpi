@@ -34,6 +34,7 @@ class PluginWhatsappbotBot {
         $from     = $this->normalizeNumber($data['from']   ?? '');
         $body     = trim($data['body'] ?? '');
         $waName   = $data['pushName'] ?? '';
+        $msgId    = $data['msgId'] ?? null;
         // Número de telefone real, quando o Baileys conseguir resolvê-lo
         // (contatos com privacidade "@lid" ativada só expõem um ID
         // pseudônimo em $from — nem sempre dá pra saber o número real).
@@ -42,11 +43,25 @@ class PluginWhatsappbotBot {
         if (empty($from) || empty($body)) return;
         if (!($this->config['is_active'] ?? false)) return;
 
-        // Salva mensagem no histórico
-        $this->saveMessage($from, 'in', $body);
-
         // Carrega ou cria sessão
         $session = $this->getOrCreateSession($from, $waName);
+
+        // Evita processar a mesma mensagem duas vezes. O servidor Baileys
+        // reenvia a mensagem ao GLPI se a chamada anterior parecer ter
+        // falhado (timeout de rede) — mas às vezes a primeira tentativa
+        // já tinha funcionado, só demorou a responder. Sem essa checagem,
+        // a segunda tentativa processa a mesma descrição de novo como se
+        // fosse uma resposta nova, criando um chamado duplicado ou caindo
+        // no menu por engano.
+        if ($msgId && $msgId === ($session['last_msg_id'] ?? '')) {
+            return;
+        }
+        if ($msgId) {
+            $this->updateSession($from, ['last_msg_id' => $msgId]);
+        }
+
+        // Salva mensagem no histórico
+        $this->saveMessage($from, 'in', $body);
 
         // Se está em atendimento humano, não processa
         if ($session['is_human']) {

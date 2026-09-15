@@ -163,6 +163,7 @@ function plugin_whatsappbot_install() {
             `state`         varchar(50)  DEFAULT 'menu',
             `context`       text,
             `last_ticket_id` int         DEFAULT 0,
+            `last_msg_id`   varchar(100) DEFAULT '',
             `is_human`      tinyint(1)   DEFAULT 0,
             `human_agent`   varchar(100) DEFAULT '',
             `date_start`    datetime     DEFAULT NULL,
@@ -172,6 +173,12 @@ function plugin_whatsappbot_install() {
             KEY `users_id` (`users_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation}";
         $DB->queryOrDie($query, "Erro ao criar tabela de sessões");
+    } elseif (!$DB->fieldExists('glpi_plugin_whatsappbot_sessions', 'last_msg_id')) {
+        // Upgrade: instalação já existente sem a coluna de deduplicação
+        $DB->queryOrDie(
+            "ALTER TABLE `glpi_plugin_whatsappbot_sessions` ADD COLUMN `last_msg_id` varchar(100) DEFAULT '' AFTER `last_ticket_id`",
+            "Erro ao adicionar coluna last_msg_id"
+        );
     }
 
     // Tabela de histórico de mensagens
