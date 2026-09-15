@@ -197,7 +197,7 @@ async function forwardToGlpi(payload, attempt = 1) {
         'x-bot-token'  : BOT_TOKEN,
       },
     });
-    logger.debug({ status: resp.status }, 'Webhook GLPI respondeu');
+    logger.info({ status: resp.status, data: resp.data }, 'Webhook GLPI respondeu');
   } catch (err) {
     const status  = err.response?.status;
     const message = err.response?.data || err.message;
