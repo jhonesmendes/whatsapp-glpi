@@ -185,6 +185,30 @@ class PluginWhatsappbotGlpiApi {
     }
 
     // ---------------------------------------------------------------
+    // Localizações
+    // ---------------------------------------------------------------
+
+    /**
+     * Retorna as localizações (filiais) cadastradas no GLPI
+     */
+    public function getLocations(): array {
+        if (!$this->initSession()) return [];
+
+        $resp = $this->request('GET', '/Location', [], [], [
+            'range'           => '0-49',
+            'forcedisplay[0]' => 'id',
+            'forcedisplay[1]' => 'name',
+            'forcedisplay[2]' => 'completename',
+        ]);
+
+        $this->killSession();
+
+        if (isset($resp['data'])) return $resp['data'];
+        if (is_array($resp) && isset($resp[0]['id'])) return $resp;
+        return [];
+    }
+
+    // ---------------------------------------------------------------
     // Usuários
     // ---------------------------------------------------------------
 
@@ -348,12 +372,7 @@ class PluginWhatsappbotGlpiApi {
         ]);
 
         if (!empty($body)) {
-            $jsonBody = json_encode($body, JSON_UNESCAPED_UNICODE);
-            if ($path === '/Ticket') {
-                // DIAGNÓSTICO TEMPORÁRIO — bug de acentuação em chamados criados via API
-                $this->log('DEBUG /Ticket payload enviado: ' . $jsonBody);
-            }
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonBody);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
         }
 
         $resp = curl_exec($ch);

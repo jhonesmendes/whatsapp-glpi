@@ -141,10 +141,21 @@ export async function createBot() {
 
       if (!body) continue;
 
-      logger.info({ from, body: body.substring(0, 80) }, 'Mensagem recebida');
+      // Quando o contato usa a privacidade "@lid" do WhatsApp, o remoteJid
+      // é um identificador pseudônimo, não o número de telefone real.
+      // Baileys às vezes expõe o número real num campo alternativo — tenta
+      // achar em qualquer um dos nomes conhecidos, sem garantia (depende
+      // da versão do Baileys e de como o WhatsApp entregou a mensagem).
+      const fromReal =
+        msg.key.remoteJidAlt ||
+        msg.key.senderPn ||
+        msg.key.participantAlt ||
+        null;
+
+      logger.info({ from, fromReal, body: body.substring(0, 80) }, 'Mensagem recebida');
 
       // Encaminha para o GLPI
-      await forwardToGlpi({ from, body, pushName, msgId: msg.key.id });
+      await forwardToGlpi({ from, fromReal, body, pushName, msgId: msg.key.id });
     }
   });
 

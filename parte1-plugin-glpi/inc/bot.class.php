@@ -31,9 +31,13 @@ class PluginWhatsappbotBot {
     // ---------------------------------------------------------------
 
     public function processIncoming(array $data): void {
-        $from    = $this->normalizeNumber($data['from']   ?? '');
-        $body    = trim($data['body'] ?? '');
-        $waName  = $data['pushName'] ?? '';
+        $from     = $this->normalizeNumber($data['from']   ?? '');
+        $body     = trim($data['body'] ?? '');
+        $waName   = $data['pushName'] ?? '';
+        // Número de telefone real, quando o Baileys conseguir resolvê-lo
+        // (contatos com privacidade "@lid" ativada só expõem um ID
+        // pseudônimo em $from — nem sempre dá pra saber o número real).
+        $fromReal = $data['fromReal'] ?? null;
 
         if (empty($from) || empty($body)) return;
         if (!($this->config['is_active'] ?? false)) return;
@@ -64,7 +68,7 @@ class PluginWhatsappbotBot {
                 break;
 
             case self::STATE_OPEN_TICKET_DESC:
-                $this->handleOpenTicketDesc($from, $body, $session);
+                $this->handleOpenTicketDesc($from, $body, $session, $fromReal);
                 break;
 
             case self::STATE_OPEN_TICKET_LOCATION:
@@ -119,16 +123,12 @@ class PluginWhatsappbotBot {
     /**
      * Aguarda descrição do problema (passo 1 de abrir chamado)
      */
-    private function handleOpenTicketDesc(string $from, string $body, array $session): void {
+    private function handleOpenTicketDesc(string $from, string $body, array $session, ?string $fromReal = null): void {
         if (strlen($body) < 10) {
             $this->wa->send($from, "⚠️ A descrição é muito curta. Por favor, descreva melhor o problema (mínimo 10 caracteres).");
             return;
         }
 
-        $context = ['description' => $body];
-
-        $askLocation = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
-        $this->wa->send($from, $askLocation);
         // JSON_UNESCAPED_UNICODE: sem isso, acentos são gravados como
         // sequências "\uXXXX" no banco. O GLPI parece remover barras
         // invertidas de strings ao buscar do banco (compatibilidade antiga
@@ -136,49 +136,88 @@ class PluginWhatsappbotBot {
         // "ã" vira "u00e3" — "não" aparece como "nu00e3o"). Gravando
         // o acento como caractere UTF-8 literal (sem barra invertida),
         // não tem o que corromper.
-        $this->updateSession($from, [
-            'state'   => self::STATE_OPEN_TICKET_LOCATION,
-            'context' => json_encode($context, JSON_UNESCAPED_UNICODE)
-        ]);
+        $context = ['description' => $body, 'fromReal' => $fromReal];
+
+        // Busca localizações cadastradas no GLPI para o usuário escolher
+        // numa lista (em vez de digitar texto livre) — assim o chamado usa
+        // o campo nativo "Localização" do GLPI, não um texto solto.
+        $locations = $this->glpiApi->getLocations();
+
+        if (!empty($locations)) {
+            $header = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
+            $msg = "{$header}\n\n";
+            foreach ($locations as $i => $loc) {
+                $num = $i + 1;
+                $msg .= "*{$num}* — {$loc['name']}\n";
+            }
+            $context['locations'] = $locations;
+
+            $this->wa->send($from, $msg);
+            $this->updateSession($from, [
+                'state'   => self::STATE_OPEN_TICKET_LOCATION,
+                'context' => json_encode($context, JSON_UNESCAPED_UNICODE)
+            ]);
+        } else {
+            // Sem localizações cadastradas no GLPI — cria o chamado sem
+            // vincular ao campo de localização.
+            $categories = $this->glpiApi->getCategories();
+            $catId      = $this->ai->detectCategory($body, $categories);
+            $this->createTicket($from, $body, 0, $catId, $session, $fromReal);
+        }
     }
 
     /**
-     * Aguarda localização/filial (passo 2 de abrir chamado) — obrigatório.
-     * Depois disso, a categoria é escolhida automaticamente pela IA com
-     * base na descrição, e o chamado é criado.
+     * Aguarda escolha da localização/filial (passo 2 de abrir chamado) —
+     * obrigatório. Depois disso, a categoria é escolhida automaticamente
+     * pela IA com base na descrição, e o chamado é criado.
      */
     private function handleOpenTicketLocation(string $from, string $body, array $session): void {
-        if (strlen(trim($body)) < 2) {
-            $this->wa->send($from, "⚠️ Por favor, informe sua filial/localização (é obrigatório para abrir o chamado).");
-            return;
-        }
-
         $context     = json_decode($session['context'] ?? '{}', true);
         $description = $context['description'] ?? 'Sem descrição';
-        $location    = trim($body);
+        $fromReal    = $context['fromReal'] ?? null;
+        $locations   = $context['locations'] ?? [];
+
+        $idx = (int)trim($body) - 1;
+        if (!is_numeric(trim($body)) || !isset($locations[$idx])) {
+            $this->wa->send($from, "⚠️ Por favor, responda apenas com o número da localização na lista acima.");
+            return;
+        }
+        $locationsId = (int)$locations[$idx]['id'];
 
         // Categoriza automaticamente com base na descrição, usando a IA
         $categories = $this->glpiApi->getCategories();
         $catId      = $this->ai->detectCategory($description, $categories);
 
-        $this->createTicket($from, $description, $location, $catId, $session);
+        $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal);
     }
 
     /**
      * Cria o chamado no GLPI e confirma
      */
-    private function createTicket(string $from, string $description, string $location, int $catId, array $session): void {
-        $userId  = (int)($session['users_id'] ?? 0);
+    private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null): void {
+        $userId = (int)($session['users_id'] ?? 0);
+        $name   = trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp';
 
-        $fullContent = "{$description}\n\n📍 Filial/Localização: {$location}\n\n[Chamado aberto via WhatsApp: $from]";
+        // Mostra o número real quando o Baileys conseguiu resolvê-lo (contatos
+        // com privacidade "@lid" só expõem um ID pseudônimo, não o número).
+        $displayNumber = $fromReal ?: preg_replace('/@.*/', '', $from);
 
-        $result = $this->glpiApi->createTicket([
-            'name'           => $this->summarizeTitle($description),
-            'content'        => $fullContent,
-            'users_id'       => $userId,
+        $fullContent = "{$description}\n\n" .
+            "👤 Solicitante: {$name}\n\n" .
+            "[Chamado aberto via WhatsApp: {$displayNumber}]";
+
+        $ticketData = [
+            'name'              => $this->summarizeTitle($description),
+            'content'           => $fullContent,
+            'users_id'          => $userId,
             'itilcategories_id' => $catId ?: ($this->config['default_category_id'] ?? 0),
-            'groups_id_assign' => $this->config['default_group_id'] ?? 0,
-        ]);
+            'groups_id_assign'  => $this->config['default_group_id'] ?? 0,
+        ];
+        if ($locationsId > 0) {
+            $ticketData['locations_id'] = $locationsId;
+        }
+
+        $result = $this->glpiApi->createTicket($ticketData);
 
         if ($result && isset($result['id'])) {
             $ticketId = $result['id'];
