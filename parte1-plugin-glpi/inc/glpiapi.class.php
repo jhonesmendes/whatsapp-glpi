@@ -84,6 +84,11 @@ class PluginWhatsappbotGlpiApi {
             $payload['input']['_groups_id_assign'] = $data['groups_id_assign'];
         }
 
+        // Localização do chamado
+        if (!empty($data['locations_id'])) {
+            $payload['input']['locations_id'] = $data['locations_id'];
+        }
+
         $result = $this->request('POST', '/Ticket', $payload);
         $this->killSession();
         return $result;
