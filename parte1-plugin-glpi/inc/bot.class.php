@@ -174,12 +174,18 @@ class PluginWhatsappbotBot {
                 $num = $i + 1;
                 $msg .= "*{$num}* — {$loc['name']}\n";
             }
-            $context['locations'] = $locations;
+            // Guarda só o essencial (id/name) — o resto que a API do GLPI
+            // devolve (endereço, lat/long, cache internos, etc.) não é
+            // usado e só deixa o contexto salvo maior à toa.
+            $context['locations'] = array_map(
+                fn($loc) => ['id' => $loc['id'], 'name' => $loc['name']],
+                $locations
+            );
 
             $this->wa->send($from, $msg);
             $this->updateSession($from, [
                 'state'   => self::STATE_OPEN_TICKET_LOCATION,
-                'context' => json_encode($context, JSON_UNESCAPED_UNICODE)
+                'context' => $this->encodeContext($context)
             ]);
         } else {
             // Sem localizações cadastradas no GLPI — cria o chamado sem
@@ -196,17 +202,10 @@ class PluginWhatsappbotBot {
      * pela IA com base na descrição, e o chamado é criado.
      */
     private function handleOpenTicketLocation(string $from, string $body, array $session): void {
-        $rawContext  = $session['context'] ?? '{}';
-        $context     = json_decode($rawContext, true);
+        $context     = $this->decodeContext($session['context'] ?? null);
         $description = $context['description'] ?? 'Sem descrição';
         $fromReal    = $context['fromReal'] ?? null;
         $locations   = $context['locations'] ?? [];
-
-        // DIAGNÓSTICO TEMPORÁRIO — bug na lista de localização
-        $this->log('DEBUG handleOpenTicketLocation rawContext=' . substr($rawContext, 0, 1000)
-            . ' | json_last_error=' . json_last_error_msg()
-            . ' | count(locations)=' . count($locations)
-            . ' | body=' . $body);
 
         $idx = (int)trim($body) - 1;
         if (!is_numeric(trim($body)) || !isset($locations[$idx])) {
@@ -587,6 +586,29 @@ class PluginWhatsappbotBot {
         [$id, $domain] = array_pad(explode('@', trim($number), 2), 2, null);
         $id = preg_replace('/[^0-9]/', '', $id ?? '');
         return $domain ? "$id@$domain" : $id;
+    }
+
+    /**
+     * Codifica o contexto da conversa para gravar na coluna "context".
+     *
+     * Usa base64 em cima do JSON, não JSON puro: o GLPI parece remover
+     * barras invertidas de strings ao buscar do banco (compatibilidade
+     * antiga com magic quotes). Isso corrompe qualquer aspas escapada
+     * (\") dentro do JSON — e alguns dados que vêm da API do GLPI (ex:
+     * campos internos "sons_cache"/"ancestors_cache" de Location) já
+     * contêm aspas dentro do próprio valor, exigindo esse escape.
+     * Base64 não usa barra invertida nem aspas, então fica imune a
+     * esse comportamento, seja lá o que for guardado no contexto.
+     */
+    private function encodeContext(array $context): string {
+        return base64_encode(json_encode($context, JSON_UNESCAPED_UNICODE));
+    }
+
+    private function decodeContext(?string $raw): array {
+        if (empty($raw)) return [];
+        $json = base64_decode($raw, true);
+        if ($json === false) return [];
+        return json_decode($json, true) ?? [];
     }
 
     // ---------------------------------------------------------------
