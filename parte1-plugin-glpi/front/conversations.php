@@ -12,7 +12,11 @@ include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 global $DB;
 
 // Ação: assumir conversa como humano
-if (isset($_GET['take']) && is_numeric($_GET['take'])) {
+//
+// OBS: wa_number pode ser um JID completo (ex: "27762752512242@lid",
+// identificador de privacidade do WhatsApp), não só dígitos — por isso
+// não usamos is_numeric() aqui, só confirmamos que o parâmetro veio.
+if (!empty($_GET['take'])) {
     $wa_number = $_GET['take'];
     $DB->update('glpi_plugin_whatsappbot_sessions', [
         'is_human'    => 1,
@@ -24,7 +28,7 @@ if (isset($_GET['take']) && is_numeric($_GET['take'])) {
 }
 
 // Ação: devolver ao bot
-if (isset($_GET['release']) && is_numeric($_GET['release'])) {
+if (!empty($_GET['release'])) {
     $wa_number = $_GET['release'];
     $DB->update('glpi_plugin_whatsappbot_sessions', [
         'is_human' => 0,
