@@ -189,11 +189,18 @@ async function forwardToGlpi(payload, attempt = 1) {
   }
 
   try {
+    // Content-Type "text/plain" de propósito, não "application/json": o
+    // núcleo do GLPI decodifica corpos JSON automaticamente para dentro de
+    // $_POST, o que aciona a checagem de CSRF do bootstrap (inc/includes.php)
+    // exigindo um token que este webhook, chamado de fora sem sessão de
+    // navegador, nunca teria como enviar. webhook.php já lê o corpo bruto
+    // via php://input e decodifica o JSON manualmente, então o Content-Type
+    // aqui não precisa refletir o formato real do corpo.
     const resp = await axios.post(WEBHOOK_URL, payload, {
       timeout      : 15000,
       family       : 4,
       headers      : {
-        'Content-Type' : 'application/json',
+        'Content-Type' : 'text/plain',
         'x-bot-token'  : BOT_TOKEN,
       },
     });
