@@ -196,10 +196,17 @@ class PluginWhatsappbotBot {
      * pela IA com base na descrição, e o chamado é criado.
      */
     private function handleOpenTicketLocation(string $from, string $body, array $session): void {
-        $context     = json_decode($session['context'] ?? '{}', true);
+        $rawContext  = $session['context'] ?? '{}';
+        $context     = json_decode($rawContext, true);
         $description = $context['description'] ?? 'Sem descrição';
         $fromReal    = $context['fromReal'] ?? null;
         $locations   = $context['locations'] ?? [];
+
+        // DIAGNÓSTICO TEMPORÁRIO — bug na lista de localização
+        $this->log('DEBUG handleOpenTicketLocation rawContext=' . substr($rawContext, 0, 1000)
+            . ' | json_last_error=' . json_last_error_msg()
+            . ' | count(locations)=' . count($locations)
+            . ' | body=' . $body);
 
         $idx = (int)trim($body) - 1;
         if (!is_numeric(trim($body)) || !isset($locations[$idx])) {
