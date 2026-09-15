@@ -129,9 +129,16 @@ class PluginWhatsappbotBot {
 
         $askLocation = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
         $this->wa->send($from, $askLocation);
+        // JSON_UNESCAPED_UNICODE: sem isso, acentos são gravados como
+        // sequências "\uXXXX" no banco. O GLPI parece remover barras
+        // invertidas de strings ao buscar do banco (compatibilidade antiga
+        // com magic quotes), o que corrompe exatamente esse escape (ex:
+        // "ã" vira "u00e3" — "não" aparece como "nu00e3o"). Gravando
+        // o acento como caractere UTF-8 literal (sem barra invertida),
+        // não tem o que corromper.
         $this->updateSession($from, [
             'state'   => self::STATE_OPEN_TICKET_LOCATION,
-            'context' => json_encode($context)
+            'context' => json_encode($context, JSON_UNESCAPED_UNICODE)
         ]);
     }
 
