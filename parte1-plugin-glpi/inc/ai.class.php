@@ -123,6 +123,49 @@ PROMPT;
         return $this->complete($prompt, 'Você é um assistente que cria títulos concisos para chamados de TI.');
     }
 
+    /**
+     * Escolhe a categoria de chamado mais adequada com base na descrição do
+     * problema, dentre as categorias existentes no GLPI.
+     *
+     * @param string $description  Descrição do problema, escrita pelo usuário
+     * @param array  $categories   Lista de categorias: [['id' => .., 'name' => ..], ...]
+     * @return int  ID da categoria escolhida, ou 0 se nenhuma se encaixar / IA indisponível
+     */
+    public function detectCategory(string $description, array $categories): int {
+        if (empty($categories)) return 0;
+
+        $list = '';
+        foreach ($categories as $cat) {
+            $list .= "{$cat['id']} — {$cat['name']}\n";
+        }
+
+        $prompt = <<<PROMPT
+Categorias de chamado de TI disponíveis (ID — Nome):
+$list
+
+Descrição do problema relatado pelo usuário:
+"$description"
+
+Qual categoria da lista acima melhor se encaixa nesse problema?
+Responda APENAS com o número do ID da categoria escolhida, nada mais.
+Se nenhuma categoria da lista fizer sentido, responda apenas: 0
+PROMPT;
+
+        $resp = $this->complete(
+            $prompt,
+            'Você classifica chamados de TI em categorias. Responda sempre apenas com um número.'
+        );
+
+        if ($resp === null) return 0;
+
+        preg_match('/\d+/', $resp, $matches);
+        $catId = isset($matches[0]) ? (int)$matches[0] : 0;
+
+        // Só aceita o ID se ele realmente existir na lista recebida
+        $validIds = array_column($categories, 'id');
+        return in_array($catId, array_map('intval', $validIds), true) ? $catId : 0;
+    }
+
     private function log(string $msg): void {
         $line = date('Y-m-d H:i:s') . ' AI  ' . $msg . PHP_EOL;
         file_put_contents($this->logFile, $line, FILE_APPEND | LOCK_EX);

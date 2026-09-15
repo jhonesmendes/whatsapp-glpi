@@ -105,6 +105,8 @@ function plugin_whatsappbot_install() {
             `openai_model`          varchar(50)  DEFAULT 'gpt-4.1',
             `openai_system_prompt`  text,
             `welcome_message`       text,
+            `ask_description_message` text,
+            `ask_location_message`  text,
             `timeout_minutes`       int          DEFAULT 15,
             `glpi_api_url`          varchar(255) DEFAULT '',
             `glpi_app_token`        varchar(255) DEFAULT '',
@@ -124,8 +126,31 @@ function plugin_whatsappbot_install() {
         $DB->insert('glpi_plugin_whatsappbot_configs', [
             'welcome_message'      => "Olá! 👋 Bem-vindo ao suporte de TI.\n\nComo posso ajudar?\n\n*1* — Abrir chamado\n*2* — Consultar andamento\n*3* — Falar com humano",
             'openai_system_prompt' => "Você é o assistente de TI da empresa. Organize as informações de chamados de forma clara e amigável em português. Use emojis com moderação. Nunca invente dados — use somente o que veio da API do GLPI. Seja conciso e direto.",
+            'ask_description_message' => "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_",
+            'ask_location_message'    => "📍 Informe sua filial/localização:",
             'date_mod'             => date('Y-m-d H:i:s')
         ]);
+    } else {
+        // Instalação já existente — adiciona colunas novas se ainda não existirem
+        // (upgrade sem apagar dados). Necessário porque este plugin não tem
+        // um sistema formal de migração por versão ainda.
+        $newColumns = [
+            'ask_description_message' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_description_message` text AFTER `welcome_message`",
+            'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_description_message`",
+        ];
+        foreach ($newColumns as $column => $alterQuery) {
+            if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
+                $DB->queryOrDie($alterQuery, "Erro ao adicionar coluna $column");
+            }
+        }
+
+        // Preenche as mensagens padrão em instalações que ainda estão vazias
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `ask_description_message` = '📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_'
+            WHERE `ask_description_message` IS NULL OR `ask_description_message` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `ask_location_message` = '📍 Informe sua filial/localização:'
+            WHERE `ask_location_message` IS NULL OR `ask_location_message` = ''");
     }
 
     // Tabela de sessões/conversas ativas

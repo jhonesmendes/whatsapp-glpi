@@ -12,12 +12,12 @@ class PluginWhatsappbotBot {
     private PluginWhatsappbotAi       $ai;
 
     // Estados da conversa
-    const STATE_MENU             = 'menu';
-    const STATE_OPEN_TICKET_DESC = 'open_ticket_desc';
-    const STATE_OPEN_TICKET_CAT  = 'open_ticket_cat';
-    const STATE_CONSULT_TICKET   = 'consult_ticket';
-    const STATE_HUMAN            = 'human';
-    const STATE_RATING           = 'rating';
+    const STATE_MENU                 = 'menu';
+    const STATE_OPEN_TICKET_DESC     = 'open_ticket_desc';
+    const STATE_OPEN_TICKET_LOCATION = 'open_ticket_location';
+    const STATE_CONSULT_TICKET       = 'consult_ticket';
+    const STATE_HUMAN                = 'human';
+    const STATE_RATING               = 'rating';
 
     public function __construct() {
         $this->config  = PluginWhatsappbotConfig::getConfig();
@@ -67,8 +67,8 @@ class PluginWhatsappbotBot {
                 $this->handleOpenTicketDesc($from, $body, $session);
                 break;
 
-            case self::STATE_OPEN_TICKET_CAT:
-                $this->handleOpenTicketCat($from, $body, $session);
+            case self::STATE_OPEN_TICKET_LOCATION:
+                $this->handleOpenTicketLocation($from, $body, $session);
                 break;
 
             case self::STATE_CONSULT_TICKET:
@@ -95,9 +95,9 @@ class PluginWhatsappbotBot {
     private function handleMenu(string $from, string $body, array $session): void {
         switch (trim($body)) {
             case '1':
-                $this->wa->send($from,
-                    "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_"
-                );
+                $askDesc = $this->config['ask_description_message']
+                    ?: "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_";
+                $this->wa->send($from, $askDesc);
                 $this->updateSession($from, ['state' => self::STATE_OPEN_TICKET_DESC]);
                 break;
 
@@ -125,59 +125,49 @@ class PluginWhatsappbotBot {
             return;
         }
 
-        // Salva descrição no contexto e pede categoria
         $context = ['description' => $body];
 
-        // Busca categorias disponíveis na API do GLPI
-        $categories = $this->glpiApi->getCategories();
-
-        if (!empty($categories)) {
-            $msg = "📂 *Categoria do chamado*\n\nEscolha a categoria:\n\n";
-            foreach ($categories as $i => $cat) {
-                $num = $i + 1;
-                $msg .= "*{$num}* — {$cat['name']}\n";
-            }
-            $msg .= "\n_Ou responda *0* para categoria geral_";
-            $context['categories'] = $categories;
-
-            $this->wa->send($from, $msg);
-            $this->updateSession($from, [
-                'state'   => self::STATE_OPEN_TICKET_CAT,
-                'context' => json_encode($context)
-            ]);
-        } else {
-            // Sem categorias → cria direto
-            $this->createTicket($from, $body, 0, $session);
-        }
+        $askLocation = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
+        $this->wa->send($from, $askLocation);
+        $this->updateSession($from, [
+            'state'   => self::STATE_OPEN_TICKET_LOCATION,
+            'context' => json_encode($context)
+        ]);
     }
 
     /**
-     * Recebe categoria escolhida e cria o chamado
+     * Aguarda localização/filial (passo 2 de abrir chamado) — obrigatório.
+     * Depois disso, a categoria é escolhida automaticamente pela IA com
+     * base na descrição, e o chamado é criado.
      */
-    private function handleOpenTicketCat(string $from, string $body, array $session): void {
-        $context    = json_decode($session['context'] ?? '{}', true);
-        $categories = $context['categories'] ?? [];
-        $description = $context['description'] ?? 'Sem descrição';
-
-        $catId = 0;
-        if ($body !== '0' && is_numeric($body)) {
-            $idx   = (int)$body - 1;
-            $catId = isset($categories[$idx]) ? (int)$categories[$idx]['id'] : 0;
+    private function handleOpenTicketLocation(string $from, string $body, array $session): void {
+        if (strlen(trim($body)) < 2) {
+            $this->wa->send($from, "⚠️ Por favor, informe sua filial/localização (é obrigatório para abrir o chamado).");
+            return;
         }
 
-        $this->createTicket($from, $description, $catId, $session);
+        $context     = json_decode($session['context'] ?? '{}', true);
+        $description = $context['description'] ?? 'Sem descrição';
+        $location    = trim($body);
+
+        // Categoriza automaticamente com base na descrição, usando a IA
+        $categories = $this->glpiApi->getCategories();
+        $catId      = $this->ai->detectCategory($description, $categories);
+
+        $this->createTicket($from, $description, $location, $catId, $session);
     }
 
     /**
      * Cria o chamado no GLPI e confirma
      */
-    private function createTicket(string $from, string $description, int $catId, array $session): void {
+    private function createTicket(string $from, string $description, string $location, int $catId, array $session): void {
         $userId  = (int)($session['users_id'] ?? 0);
-        $name    = $session['wa_name'] ?? 'Usuário WhatsApp';
+
+        $fullContent = "{$description}\n\n📍 Filial/Localização: {$location}\n\n[Chamado aberto via WhatsApp: $from]";
 
         $result = $this->glpiApi->createTicket([
             'name'           => $this->summarizeTitle($description),
-            'content'        => $description . "\n\n[Chamado aberto via WhatsApp: $from]",
+            'content'        => $fullContent,
             'users_id'       => $userId,
             'itilcategories_id' => $catId ?: ($this->config['default_category_id'] ?? 0),
             'groups_id_assign' => $this->config['default_group_id'] ?? 0,

@@ -30,6 +30,16 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Use *texto* para negrito e _texto_ para itálico (formatação WhatsApp)</span>
         </div>
         <div class="wa-field">
+          <label>Mensagem pedindo a descrição do problema (opção "1 — Abrir chamado")</label>
+          <textarea name="ask_description_message" style="min-height:90px"><?= htmlspecialchars($config['ask_description_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada logo após o usuário escolher "Abrir chamado"</span>
+        </div>
+        <div class="wa-field">
+          <label>Mensagem pedindo a localização/filial</label>
+          <textarea name="ask_location_message" style="min-height:70px"><?= htmlspecialchars($config['ask_location_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada depois da descrição, antes de criar o chamado — a resposta é obrigatória e vai junto na descrição do chamado</span>
+        </div>
+        <div class="wa-field">
           <label>Ação após chamado resolvido</label>
           <select name="post_resolve_action">
             <option value="ask_rating" <?= ($config['post_resolve_action'] ?? '') === 'ask_rating' ? 'selected' : '' ?>>Pedir avaliação (1-5) e transferir se &lt; 3</option>

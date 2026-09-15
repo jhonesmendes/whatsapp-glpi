@@ -38,6 +38,8 @@ class PluginWhatsappbotConfig extends CommonGLPI {
             'openai_model'         => fn($v) => $v,
             'openai_system_prompt' => fn($v) => trim($v),
             'welcome_message'      => fn($v) => trim($v),
+            'ask_description_message' => fn($v) => trim($v),
+            'ask_location_message' => fn($v) => trim($v),
             'glpi_api_url'         => fn($v) => trim($v),
             'glpi_app_token'       => fn($v) => trim($v),
             'glpi_user_token'      => fn($v) => trim($v),
