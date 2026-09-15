@@ -63,6 +63,15 @@ class PluginWhatsappbotBot {
         // Salva mensagem no histórico
         $this->saveMessage($from, 'in', $body);
 
+        // Contato novo: getOrCreateSession() já mandou o menu de
+        // boas-vindas como resposta a esta primeira mensagem. Não
+        // continuar processando o mesmo texto como se fosse uma escolha
+        // de menu — isso mandava "Opção não reconhecida" + o menu de novo
+        // em seguida, sempre que a primeira mensagem não fosse "1"/"2"/"3".
+        if (!empty($session['_is_new_session'])) {
+            return;
+        }
+
         // Se está em atendimento humano, não processa
         if ($session['is_human']) {
             // Apenas registra — humano responde manualmente via painel
@@ -611,11 +620,17 @@ class PluginWhatsappbotBot {
         // Envia menu de boas-vindas na primeira mensagem
         $this->sendMenu($from, $name);
 
-        return $DB->request([
+        $session = $DB->request([
             'FROM'  => 'glpi_plugin_whatsappbot_sessions',
             'WHERE' => ['wa_number' => $from],
             'LIMIT' => 1
         ])->current();
+
+        // Sinaliza pro chamador (processIncoming) que o menu já foi enviado
+        // agora mesmo — não é um valor de fato salvo no banco, só uma
+        // marcação em memória para esta chamada.
+        $session['_is_new_session'] = true;
+        return $session;
     }
 
     private function updateSession(string $from, array $fields): void {
