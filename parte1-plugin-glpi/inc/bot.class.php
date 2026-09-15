@@ -262,14 +262,16 @@ class PluginWhatsappbotBot {
             $this->wa->send($from,
                 "✅ *Chamado aberto com sucesso!*\n\n" .
                 "🔢 Número: *#{$ticketId}*\n" .
-                "📝 Assunto: {$result['name']}\n" .
-                "⏳ Status: Aguardando atendimento\n\n" .
+                "📝 Nome: {$name}\n" .
+                "⏳ Status: Chamado Aberto\n\n" .
                 "Você receberá atualizações aqui quando houver novidades.\n\n" .
                 "_Responda *menu* a qualquer momento para voltar ao início_"
             );
 
             // 2. Notifica técnicos do grupo configurado
-            $this->notifyTechnicians($ticketId, $result['name'] ?? 'Sem título', $description, $session);
+            // (a API do GLPI não devolve o campo "name" na resposta do
+            // POST /Ticket — usamos o mesmo título que enviamos)
+            $this->notifyTechnicians($ticketId, $ticketData['name'], $description, $session);
 
         } else {
             $this->wa->send($from,
