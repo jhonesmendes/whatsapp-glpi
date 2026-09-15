@@ -271,6 +271,14 @@ class PluginWhatsappbotBot {
         $userId = (int)($session['users_id'] ?? 0);
 
         if ($userId === 0) {
+            // Sem conta GLPI vinculada a este número — não dá pra listar
+            // "os chamados do usuário", mas se ele abriu algum chamado por
+            // esta própria conversa, mostra o andamento dele mesmo assim.
+            $lastTicketId = (int)($session['last_ticket_id'] ?? 0);
+            if ($lastTicketId > 0) {
+                $this->handleConsultTicket($from, (string)$lastTicketId, $session);
+                return;
+            }
             $this->wa->send($from,
                 "⚠️ Não encontrei sua conta no sistema.\n\nPor favor, escolha outra opção ou fale com um técnico (*opção 3*)."
             );
