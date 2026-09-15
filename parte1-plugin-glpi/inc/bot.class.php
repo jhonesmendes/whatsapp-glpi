@@ -14,6 +14,7 @@ class PluginWhatsappbotBot {
     // Estados da conversa
     const STATE_MENU                 = 'menu';
     const STATE_OPEN_TICKET_DESC     = 'open_ticket_desc';
+    const STATE_OPEN_TICKET_NAME     = 'open_ticket_name';
     const STATE_OPEN_TICKET_LOCATION = 'open_ticket_location';
     const STATE_CONSULT_TICKET       = 'consult_ticket';
     const STATE_HUMAN                = 'human';
@@ -95,6 +96,10 @@ class PluginWhatsappbotBot {
                 $this->handleOpenTicketDesc($from, $body, $session, $fromReal);
                 break;
 
+            case self::STATE_OPEN_TICKET_NAME:
+                $this->handleOpenTicketName($from, $body, $session);
+                break;
+
             case self::STATE_OPEN_TICKET_LOCATION:
                 $this->handleOpenTicketLocation($from, $body, $session);
                 break;
@@ -153,14 +158,35 @@ class PluginWhatsappbotBot {
             return;
         }
 
-        // JSON_UNESCAPED_UNICODE: sem isso, acentos são gravados como
-        // sequências "\uXXXX" no banco. O GLPI parece remover barras
-        // invertidas de strings ao buscar do banco (compatibilidade antiga
-        // com magic quotes), o que corrompe exatamente esse escape (ex:
-        // "ã" vira "u00e3" — "não" aparece como "nu00e3o"). Gravando
-        // o acento como caractere UTF-8 literal (sem barra invertida),
-        // não tem o que corromper.
+        // JSON_UNESCAPED_UNICODE (dentro de encodeContext): sem isso, acentos
+        // são gravados como sequências "\uXXXX" no banco. O GLPI parece
+        // remover barras invertidas de strings ao buscar do banco
+        // (compatibilidade antiga com magic quotes), o que corrompe esse
+        // escape (ex: "ã" vira "u00e3" — "não" aparece como "nu00e3o").
         $context = ['description' => $body, 'fromReal' => $fromReal];
+
+        $askName = $this->config['ask_name_message'] ?: "👤 Informe seu nome:";
+        $this->wa->send($from, $askName);
+        $this->updateSession($from, [
+            'state'   => self::STATE_OPEN_TICKET_NAME,
+            'context' => $this->encodeContext($context)
+        ]);
+    }
+
+    /**
+     * Aguarda o nome de quem está solicitando (passo 2 de abrir chamado) —
+     * obrigatório. Usado no chamado em vez do nome de contato do WhatsApp
+     * (que às vezes vem vazio, com apelido, ou não corresponde à pessoa).
+     */
+    private function handleOpenTicketName(string $from, string $body, array $session): void {
+        $name = trim($body);
+        if (mb_strlen($name) < 2) {
+            $this->wa->send($from, "⚠️ Por favor, informe seu nome (é obrigatório para abrir o chamado).");
+            return;
+        }
+
+        $context         = $this->decodeContext($session['context'] ?? null);
+        $context['name'] = $name;
 
         // Busca localizações cadastradas no GLPI para o usuário escolher
         // numa lista (em vez de digitar texto livre) — assim o chamado usa
@@ -190,14 +216,16 @@ class PluginWhatsappbotBot {
         } else {
             // Sem localizações cadastradas no GLPI — cria o chamado sem
             // vincular ao campo de localização.
-            $categories = $this->glpiApi->getCategories();
-            $catId      = $this->ai->detectCategory($body, $categories);
-            $this->createTicket($from, $body, 0, $catId, $session, $fromReal);
+            $description = $context['description'] ?? 'Sem descrição';
+            $fromReal    = $context['fromReal'] ?? null;
+            $categories  = $this->glpiApi->getCategories();
+            $catId       = $this->ai->detectCategory($description, $categories);
+            $this->createTicket($from, $description, 0, $catId, $session, $fromReal, $name);
         }
     }
 
     /**
-     * Aguarda escolha da localização/filial (passo 2 de abrir chamado) —
+     * Aguarda escolha da localização/filial (passo 3 de abrir chamado) —
      * obrigatório. Depois disso, a categoria é escolhida automaticamente
      * pela IA com base na descrição, e o chamado é criado.
      */
@@ -205,6 +233,7 @@ class PluginWhatsappbotBot {
         $context     = $this->decodeContext($session['context'] ?? null);
         $description = $context['description'] ?? 'Sem descrição';
         $fromReal    = $context['fromReal'] ?? null;
+        $name        = $context['name'] ?? null;
         $locations   = $context['locations'] ?? [];
 
         $idx = (int)trim($body) - 1;
@@ -218,15 +247,17 @@ class PluginWhatsappbotBot {
         $categories = $this->glpiApi->getCategories();
         $catId      = $this->ai->detectCategory($description, $categories);
 
-        $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal);
+        $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal, $name);
     }
 
     /**
      * Cria o chamado no GLPI e confirma
      */
-    private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null): void {
+    private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null): void {
         $userId = (int)($session['users_id'] ?? 0);
-        $name   = trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp';
+        // Prioriza o nome que a pessoa digitou no fluxo (mais confiável) sobre
+        // o nome de contato do WhatsApp (pode vir vazio, com apelido, etc.)
+        $name   = trim($requesterName ?? '') ?: (trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp');
 
         // Mostra o número real quando o Baileys conseguiu resolvê-lo (contatos
         // com privacidade "@lid" só expõem um ID pseudônimo, não o número).

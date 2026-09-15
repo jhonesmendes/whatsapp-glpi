@@ -106,6 +106,7 @@ function plugin_whatsappbot_install() {
             `openai_system_prompt`  text,
             `welcome_message`       text,
             `ask_description_message` text,
+            `ask_name_message`      text,
             `ask_location_message`  text,
             `timeout_minutes`       int          DEFAULT 15,
             `glpi_api_url`          varchar(255) DEFAULT '',
@@ -127,6 +128,7 @@ function plugin_whatsappbot_install() {
             'welcome_message'      => "Olá! 👋 Bem-vindo ao suporte de TI.\n\nComo posso ajudar?\n\n*1* — Abrir chamado\n*2* — Consultar andamento\n*3* — Falar com humano",
             'openai_system_prompt' => "Você é o assistente de TI da empresa. Organize as informações de chamados de forma clara e amigável em português. Use emojis com moderação. Nunca invente dados — use somente o que veio da API do GLPI. Seja conciso e direto.",
             'ask_description_message' => "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_",
+            'ask_name_message'        => "👤 Informe seu nome:",
             'ask_location_message'    => "📍 Informe sua filial/localização:",
             'date_mod'             => date('Y-m-d H:i:s')
         ]);
@@ -136,7 +138,8 @@ function plugin_whatsappbot_install() {
         // um sistema formal de migração por versão ainda.
         $newColumns = [
             'ask_description_message' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_description_message` text AFTER `welcome_message`",
-            'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_description_message`",
+            'ask_name_message'        => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_name_message` text AFTER `ask_description_message`",
+            'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_name_message`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
@@ -148,6 +151,9 @@ function plugin_whatsappbot_install() {
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `ask_description_message` = '📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_'
             WHERE `ask_description_message` IS NULL OR `ask_description_message` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `ask_name_message` = '👤 Informe seu nome:'
+            WHERE `ask_name_message` IS NULL OR `ask_name_message` = ''");
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `ask_location_message` = '📍 Informe sua filial/localização:'
             WHERE `ask_location_message` IS NULL OR `ask_location_message` = ''");

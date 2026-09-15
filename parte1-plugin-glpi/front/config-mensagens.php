@@ -35,9 +35,14 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Enviada logo após o usuário escolher "Abrir chamado"</span>
         </div>
         <div class="wa-field">
+          <label>Mensagem pedindo o nome de quem está solicitando</label>
+          <textarea name="ask_name_message" style="min-height:70px"><?= htmlspecialchars($config['ask_name_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada logo após a descrição — a resposta é obrigatória e é usada como "Solicitante" no chamado, em vez do nome de contato do WhatsApp</span>
+        </div>
+        <div class="wa-field">
           <label>Mensagem pedindo a localização/filial</label>
           <textarea name="ask_location_message" style="min-height:70px"><?= htmlspecialchars($config['ask_location_message'] ?? '') ?></textarea>
-          <span class="wa-hint">Enviada depois da descrição, antes de criar o chamado — a resposta é obrigatória e vai junto na descrição do chamado</span>
+          <span class="wa-hint">Enviada depois do nome — vira uma lista com as localizações cadastradas no GLPI, a resposta é obrigatória</span>
         </div>
         <div class="wa-field">
           <label>Ação após chamado resolvido</label>
