@@ -348,7 +348,12 @@ class PluginWhatsappbotGlpiApi {
         ]);
 
         if (!empty($body)) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+            $jsonBody = json_encode($body, JSON_UNESCAPED_UNICODE);
+            if ($path === '/Ticket') {
+                // DIAGNÓSTICO TEMPORÁRIO — bug de acentuação em chamados criados via API
+                $this->log('DEBUG /Ticket payload enviado: ' . $jsonBody);
+            }
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonBody);
         }
 
         $resp = curl_exec($ch);
