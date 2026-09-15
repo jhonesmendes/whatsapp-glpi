@@ -9,7 +9,9 @@
  */
 
 // Bootstrap do GLPI
-define('GLPI_ROOT', dirname(dirname(dirname(__DIR__))));
+// webhook.php fica em plugins/whatsappbot/ (não em front/ ou ajax/),
+// então a raiz do GLPI está 2 níveis acima, não 3.
+define('GLPI_ROOT', dirname(dirname(__DIR__)));
 include(GLPI_ROOT . "/inc/includes.php");
 
 // Carrega classes do plugin
