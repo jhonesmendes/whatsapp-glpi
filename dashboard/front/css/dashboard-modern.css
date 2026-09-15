@@ -1,0 +1,150 @@
+/* ==============================================================
+   dashboard-modern.css
+   Camada visual "clean" para o plugin Dashboard (GLPI).
+   Aplica cards arredondados, sombras suaves, tipografia e
+   micro-animações nas páginas de gráficos SEM alterar a lógica.
+
+   Como usar: inclua UMA linha no <head> das páginas de gráfico,
+   logo APÓS os demais CSS, por ex. em front/graphs/*.php:
+
+     <link href="../css/dashboard-modern.css" rel="stylesheet" type="text/css" />
+
+   (nas páginas da raiz front/ use href="css/dashboard-modern.css")
+   ============================================================== */
+
+:root {
+  --dash-bg:        #f1f4f9;
+  --dash-card:      #ffffff;
+  --dash-ink:       #2b3445;
+  --dash-muted:     #8a94a6;
+  --dash-accent:    #4f7cff;
+  --dash-border:    #e7ebf3;
+  --dash-radius:    16px;
+  --dash-shadow:    0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+  --dash-shadow-hv: 0 4px 10px rgba(16,24,40,.08), 0 18px 40px rgba(16,24,40,.12);
+}
+
+/* fundo mais suave que o cinza chapado original */
+body {
+  background: var(--dash-bg) !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* cabeçalho do total de chamados */
+#head.fluid,
+#head {
+  background: var(--dash-card);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
+  padding: 20px 24px !important;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+
+#head .fa-home {
+  color: var(--dash-muted);
+  transition: color .2s ease, transform .2s ease;
+}
+#head .fa-home:hover {
+  color: var(--dash-accent);
+  transform: translateY(-1px);
+}
+
+#titulo_graf {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--dash-ink);
+  letter-spacing: .2px;
+}
+
+#titulo_graf .quant {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--dash-accent), #6f9bff);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(79,124,255,.35);
+}
+
+/* cada gráfico vira um "card" */
+#graf_linhas, #graf2, #graf3, #graf4, #graf5,
+#graf_tipo, #graftime, #grafgrp, #grafcat,
+[id^="graf"] {
+  background: var(--dash-card);
+  border: 1px solid var(--dash-border);
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
+  padding: 16px;
+  box-sizing: border-box;
+  transition: box-shadow .25s ease, transform .25s ease;
+  /* animação de entrada */
+  animation: dashFadeUp .5s ease both;
+}
+
+/* hover dinâmico nos cards */
+[id^="graf"]:hover {
+  box-shadow: var(--dash-shadow-hv);
+  transform: translateY(-2px);
+}
+
+/* entrada escalonada para dar dinamismo ao carregar */
+#graf_linhas { animation-delay: .02s; }
+#graf2       { animation-delay: .08s; }
+#graf4       { animation-delay: .12s; }
+#graf_tipo   { animation-delay: .16s; }
+#graftime    { animation-delay: .20s; }
+#grafgrp     { animation-delay: .24s; }
+#grafcat     { animation-delay: .28s; }
+
+@keyframes dashFadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* respeita quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  [id^="graf"] { animation: none; }
+  [id^="graf"]:hover { transform: none; }
+}
+
+/* tabelas (rankings de técnicos/usuários) mais limpas */
+#charts table,
+.chart table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+#charts table th,
+.chart table th {
+  color: var(--dash-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: .4px;
+  border-bottom: 1px solid var(--dash-border);
+  padding: 10px 12px;
+}
+#charts table td,
+.chart table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f4f9;
+  color: var(--dash-ink);
+}
+#charts table tr:hover td,
+.chart table tr:hover td {
+  background: #f7f9fc;
+}
+
+/* scrollbar discreta (webkit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: #cfd6e4; border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: #b9c2d6; }

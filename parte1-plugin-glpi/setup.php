@@ -27,7 +27,9 @@ function plugin_init_whatsappbot() {
     ];
 
     // Hook: quando comentário é adicionado ao chamado
-    $PLUGIN_HOOKS['post_item_form']['whatsappbot'] = [
+    // (post_item_form é para desenhar a tela do formulário, não dispara
+    // quando o registro é salvo — item_add é o gancho certo para isso)
+    $PLUGIN_HOOKS['item_add']['whatsappbot'] = [
         'ITILFollowup' => 'plugin_whatsappbot_followup_added'
     ];
 

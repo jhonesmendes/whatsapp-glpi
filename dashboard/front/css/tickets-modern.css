@@ -1,0 +1,132 @@
+/* ==============================================================
+   tickets-modern.css
+   Visual "clean" para os painéis de chamados abertos
+   (tickets.php, chamados.php, tickets_ent.php, tickets_group.php,
+    cham_entidades.php, cham_grupos.php).
+   Carregar APÓS os CSS de skin (por isso !important onde precisa).
+   ============================================================== */
+
+:root{
+  --tk-card:#ffffff;
+  --tk-ink:#1f2937;
+  --tk-muted:#8a94a6;
+  --tk-border:#e9edf4;
+  --tk-head:#2b3445;
+  --tk-radius:16px;
+  --tk-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 30px rgba(16,24,40,.07);
+}
+
+/* quadro que envolve a tabela vira um card branco limpo.
+   IMPORTANTE: NÃO mexer em margin/position aqui — o tema original usa
+   .report { margin-top:-135px } para encaixar o quadro abaixo da barra
+   azul (que é position:absolute). Sobrescrever a margem desalinha tudo. */
+#lista_chamados1.well,
+.info_box{
+  background:var(--tk-card) !important;
+  border:1px solid var(--tk-border) !important;
+  border-radius:var(--tk-radius) !important;
+  box-shadow:var(--tk-shadow) !important;
+  padding:16px 18px !important;
+  animation:tkFade .45s ease both;
+}
+
+/* tabela */
+#tickets{
+  width:100% !important;
+  border-collapse:separate !important;
+  border-spacing:0 !important;
+  font-size:15px !important;
+  font-weight:400 !important;
+}
+
+/* Em modo scrollY o DataTables separa o cabeçalho VISÍVEL
+   (.dataTables_scrollHead) do cabeçalho-clone ESCONDIDO usado só
+   para medir colunas (.dataTables_scrollBody thead). Estilizamos só
+   o visível e ZERAMOS o clone — era ele que virava a faixa escura. */
+.dataTables_scrollHead table thead th,
+.dataTables_scrollHead table thead .sorting,
+.dataTables_scrollHead table thead th.sorting,
+.dataTables_scrollHead table thead th.sorting_asc,
+.dataTables_scrollHead table thead th.sorting_desc{
+  background-color:var(--tk-head) !important;
+  color:#f8fafc !important;
+  font-weight:600 !important;
+  font-size:13px !important;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  padding:14px 12px !important;
+  border:0 !important;
+  vertical-align:middle !important;
+}
+.dataTables_scrollHead table thead th a,
+.dataTables_scrollHead table thead th font{ color:#f8fafc !important; }
+.dataTables_scrollHead table thead th:first-child{ border-top-left-radius:12px; }
+.dataTables_scrollHead table thead th:last-child{ border-top-right-radius:12px; }
+
+/* mata a faixa escura: cabeçalho-clone de medição dentro do corpo */
+.dataTables_scrollBody table thead th,
+.dataTables_scrollBody table thead .sorting{
+  background:transparent !important;
+  background-color:transparent !important;
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+  border:0 !important;
+  height:0 !important;
+  line-height:0 !important;
+}
+
+/* fallback caso o DataTables não entre em modo scroll nesta versão */
+#tickets > thead th{
+  background-color:var(--tk-head) !important;
+  color:#f8fafc !important;
+  padding:14px 12px !important;
+  border:0 !important;
+}
+#tickets > thead th a,
+#tickets > thead th font{ color:#f8fafc !important; }
+
+/* corpo: linhas com respiro, zebra suave e hover */
+#tickets tbody td{
+  padding:13px 12px !important;
+  border-bottom:1px solid #eef1f6 !important;
+  color:var(--tk-ink) !important;
+  vertical-align:middle !important;
+}
+#tickets tbody tr{ transition:background .15s ease; }
+#tickets tbody tr:nth-child(odd) td{ background:#fafbfd; }
+#tickets tbody tr:hover td{ background:#eef4ff !important; }
+
+/* status: ícone (png) alinhado e com leve respiro */
+#tickets tbody td img{
+  vertical-align:middle;
+  margin-right:6px;
+  width:14px; height:14px;
+}
+
+/* links de id/título mais discretos */
+#tickets tbody td a{ color:#3a5fe0 !important; text-decoration:none; }
+#tickets tbody td a:hover{ text-decoration:underline; }
+
+/* prioridade em formato de "chip" arredondado.
+   O PHP passou a envolver o nome num <span class="prio-chip"> com a
+   cor da prioridade vinda do banco. A célula em si fica neutra. */
+#tickets tbody td .prio-chip{
+  display:inline-block;
+  padding:4px 14px;
+  border-radius:999px;
+  font-weight:600;
+  font-size:13px;
+  color:#3a2a00;
+  line-height:1.4;
+}
+
+/* avisos de PHP (caso ainda apareça algo) ficam discretos, não vazam layout */
+#lista_chamados1 b + br{ display:none; }
+
+@keyframes tkFade{
+  from{ opacity:0; transform:translateY(10px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+@media (prefers-reduced-motion: reduce){
+  #lista_chamados1.well,.info_box{ animation:none !important; }
+}

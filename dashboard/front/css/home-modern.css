@@ -1,0 +1,190 @@
+/* ==============================================================
+   home-modern.css
+   Repaginação "clean" da tela inicial do plugin Dashboard (main.php):
+   - cards de contadores (CHAMADOS Hoje/Mês/Total/Atrasado/Backlog/Usuários)
+   - painéis de gráfico (widgets)
+   Mantém a identidade de cores, mas em um visual moderno: cards brancos,
+   chip de ícone colorido, número escuro, sombra suave, hover e animação.
+
+   Carregado por main.php (e main2.php) APÓS os CSS de skin, por isso
+   usa !important onde precisa vencer as regras antigas.
+   ============================================================== */
+
+:root{
+  --hm-card:#ffffff;
+  --hm-ink:#1f2937;
+  --hm-muted:#8a94a6;
+  --hm-border:#e9edf4;
+  --hm-radius:16px;
+  --hm-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px rgba(16,24,40,.06);
+  --hm-shadow-hv:0 6px 16px rgba(16,24,40,.10),0 22px 48px rgba(16,24,40,.14);
+}
+
+/* fundo mais suave (não força em tema com papel de parede) */
+body:not([style*="url("]) { background:#eef1f7 !important; }
+
+/* ---------- CARDS DE CONTADORES (topo) ------------------------ */
+.content .dashbox.panel{
+  background:var(--hm-card) !important;
+  color:var(--hm-ink) !important;
+  border:1px solid var(--hm-border) !important;
+  border-radius:var(--hm-radius) !important;
+  box-shadow:var(--hm-shadow) !important;
+  overflow:hidden;
+  position:relative;
+  margin-bottom:14px;
+  transition:transform .25s ease, box-shadow .25s ease;
+  animation:hmFadeUp .5s ease both;
+}
+.content .dashbox.panel:hover{
+  transform:translateY(-3px);
+  box-shadow:var(--hm-shadow-hv) !important;
+}
+
+/* corpo do card em flex: chip de ícone + textos */
+.content .dashbox .panel-body{
+  display:flex !important;
+  align-items:center;
+  gap:14px;
+  padding:18px 18px !important;
+}
+
+/* barra de acento colorida no topo de cada card */
+.content .dashbox.panel::before{
+  content:"";
+  position:absolute; top:0; left:0; right:0; height:4px;
+  background:var(--hm-accent,#4f7cff);
+}
+
+/* chip do ícone (substitui o bloco colorido de 30%) */
+.content .dashbox .panel-left{
+  width:54px !important;
+  height:54px !important;
+  min-width:54px;
+  float:none !important;
+  padding:0 !important;
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  border-radius:14px !important;
+  background:var(--hm-tint,#e6edff) !important;
+}
+.content .dashbox .panel-left i{
+  color:var(--hm-accent,#4f7cff) !important;
+  font-size:22px !important;
+  line-height:1 !important;
+}
+
+/* área de texto */
+.content .dashbox .panel-right{
+  float:none !important;
+  flex:1 1 auto;
+  text-align:left !important;
+  padding:0 !important;
+}
+
+/* o número (odômetro) */
+.content .dashbox .odometer,
+#odometer1,#odometer2,#odometer3,#odometer4,#odometer5,#odometer6{
+  color:var(--hm-ink) !important;
+  font-weight:700 !important;
+  font-size:30px !important;
+  line-height:1.1 !important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif !important;
+}
+
+/* rótulos */
+.content .dashbox .chamado{
+  color:var(--hm-muted) !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+}
+.content .dashbox .date{
+  color:var(--hm-ink) !important;
+  font-style:normal !important;
+  font-weight:500 !important;
+  font-size:13px !important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif !important;
+}
+
+/* paleta por card (acento + tom claro do chip) */
+.db-red    { --hm-accent:#0f8a76; --hm-tint:#d9f5ee; }
+.db-blue   { --hm-accent:#3a5fe0; --hm-tint:#e6edff; }
+.db-purple { --hm-accent:#9333ea; --hm-tint:#f3e8ff; }
+.db-dred   { --hm-accent:#dc2626; --hm-tint:#fde8e8; }
+.db-brown  { --hm-accent:#8a6650; --hm-tint:#efe6df; }
+.db-orange { --hm-accent:#ea7c0c; --hm-tint:#ffedd5; }
+.db-green  { --hm-accent:#0f8a76; --hm-tint:#d9f5ee; }
+
+/* animação de entrada escalonada dos 6 cards */
+#panels .col-md-2:nth-child(1) .dashbox{ animation-delay:.02s; }
+#panels .col-md-2:nth-child(2) .dashbox{ animation-delay:.07s; }
+#panels .col-md-2:nth-child(3) .dashbox{ animation-delay:.12s; }
+#panels .col-md-2:nth-child(4) .dashbox{ animation-delay:.17s; }
+#panels .col-md-2:nth-child(5) .dashbox{ animation-delay:.22s; }
+#panels .col-md-2:nth-child(6) .dashbox{ animation-delay:.27s; }
+
+/* ---------- PAINÉIS DE GRÁFICO (widgets) ---------------------- */
+#widgets .widget.card1,
+.widget2,
+#tickets_total.widget2{
+  background:var(--hm-card) !important;
+  border:1px solid var(--hm-border) !important;
+  border-radius:var(--hm-radius) !important;
+  box-shadow:var(--hm-shadow) !important;
+  overflow:hidden;
+  transition:box-shadow .25s ease, transform .25s ease;
+  animation:hmFadeUp .5s ease both;
+}
+#widgets .widget.card1:hover,
+.widget2:hover{
+  transform:translateY(-2px);
+  box-shadow:var(--hm-shadow-hv) !important;
+}
+
+/* cabeçalho dos widgets: barra colorida vira cabeçalho branco limpo */
+#widgets .widget-header,
+.widget-header2{
+  background:var(--hm-card) !important;
+  border-bottom:1px solid var(--hm-border) !important;
+  border-radius:0 !important;
+  padding:12px 16px !important;
+}
+#widgets .widget-header h3,
+.widget-header2 h3{
+  color:var(--hm-ink) !important;
+  font-size:14px !important;
+  font-weight:600 !important;
+  margin:0 !important;
+  text-transform:none !important;
+}
+/* ícone do título recebe a cor de acento conforme a classe do header */
+.widget-header.wred  h3 i{ color:#dc2626 !important; }
+.widget-header.wpurple h3 i{ color:#9333ea !important; }
+.widget-header.wyellow h3 i{ color:#ea7c0c !important; }
+.widget-header.wblue h3 i{ color:#3a5fe0 !important; }
+.widget-header.wgreen h3 i{ color:#0f8a76 !important; }
+.widget-header2 h3 i{ color:#3a5fe0 !important; }
+
+/* botão de fechar widget mais discreto */
+#widgets .hide-widget{
+  color:#c2c9d6 !important;
+  transition:color .2s ease;
+}
+#widgets .hide-widget:hover{ color:#dc2626 !important; cursor:pointer; }
+
+/* ---------- animação + acessibilidade ------------------------- */
+@keyframes hmFadeUp{
+  from{ opacity:0; transform:translateY(14px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+@media (prefers-reduced-motion: reduce){
+  .content .dashbox.panel,
+  #widgets .widget.card1,
+  .widget2{ animation:none !important; }
+  .content .dashbox.panel:hover,
+  #widgets .widget.card1:hover,
+  .widget2:hover{ transform:none !important; }
+}
