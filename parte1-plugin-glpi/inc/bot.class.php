@@ -498,10 +498,20 @@ class PluginWhatsappbotBot {
         return $labels[$status] ?? "Status $status";
     }
 
+    /**
+     * Normaliza o JID recebido, mantendo o domínio original (ex: "@s.whatsapp.net",
+     * "@lid" — identificador pseudônimo de privacidade do WhatsApp).
+     *
+     * Antes isso removia TUDO que não fosse dígito, descartando o domínio —
+     * então ao responder, sempre se assumia "@s.whatsapp.net". Para contatos
+     * com privacidade "@lid" ativada, isso manda a resposta para um número
+     * que não existe (o ID do @lid não é o número de telefone real da
+     * pessoa), e o bot fica "mudo" mesmo processando a mensagem certinho.
+     */
     private function normalizeNumber(string $number): string {
-        // Remove "@s.whatsapp.net" e não numéricos
-        $number = preg_replace('/[^0-9]/', '', $number);
-        return $number;
+        [$id, $domain] = array_pad(explode('@', trim($number), 2), 2, null);
+        $id = preg_replace('/[^0-9]/', '', $id ?? '');
+        return $domain ? "$id@$domain" : $id;
     }
 
     // ---------------------------------------------------------------

@@ -132,7 +132,7 @@ function plugin_whatsappbot_install() {
     if (!$DB->tableExists('glpi_plugin_whatsappbot_sessions')) {
         $query = "CREATE TABLE `glpi_plugin_whatsappbot_sessions` (
             `id`            int {$default_key_sign} NOT NULL AUTO_INCREMENT,
-            `wa_number`     varchar(30)  NOT NULL,
+            `wa_number`     varchar(50)  NOT NULL,
             `wa_name`       varchar(100) DEFAULT '',
             `users_id`      int          DEFAULT 0,
             `state`         varchar(50)  DEFAULT 'menu',
@@ -153,7 +153,7 @@ function plugin_whatsappbot_install() {
     if (!$DB->tableExists('glpi_plugin_whatsappbot_messages')) {
         $query = "CREATE TABLE `glpi_plugin_whatsappbot_messages` (
             `id`            int {$default_key_sign} NOT NULL AUTO_INCREMENT,
-            `wa_number`     varchar(30) NOT NULL,
+            `wa_number`     varchar(50) NOT NULL,
             `direction`     enum('in','out') NOT NULL DEFAULT 'in',
             `message`       text,
             `ticket_id`     int         DEFAULT 0,

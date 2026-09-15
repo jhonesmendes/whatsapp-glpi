@@ -17,14 +17,26 @@ class PluginWhatsappbotWhatsapp {
     }
 
     /**
+     * Completa o JID com "@s.whatsapp.net" apenas se ainda não tiver um
+     * domínio. Alguns contatos chegam com sufixo diferente (ex: "@lid",
+     * o identificador pseudônimo de privacidade do WhatsApp) — nesses
+     * casos usar "@s.whatsapp.net" manda a mensagem para um destino que
+     * não existe, então a resposta nunca chega.
+     */
+    private function toJid(string $to): string {
+        return str_contains($to, '@') ? $to : $to . '@s.whatsapp.net';
+    }
+
+    /**
      * Envia mensagem de texto para um número
      *
-     * @param string $to     Número destino (somente dígitos, com DDI: 5511999990000)
+     * @param string $to     JID destino, com sufixo (@s.whatsapp.net, @lid, etc.)
+     *                       ou só dígitos com DDI (assume @s.whatsapp.net nesse caso)
      * @param string $text   Texto da mensagem (suporta markdown WA: *negrito*, _itálico_)
      */
     public function send(string $to, string $text): bool {
         return $this->post('/send', [
-            'to'   => $to . '@s.whatsapp.net',
+            'to'   => $this->toJid($to),
             'text' => $text,
         ]);
     }
@@ -34,7 +46,7 @@ class PluginWhatsappbotWhatsapp {
      */
     public function sendImage(string $to, string $imageUrl, string $caption = ''): bool {
         return $this->post('/send-image', [
-            'to'      => $to . '@s.whatsapp.net',
+            'to'      => $this->toJid($to),
             'url'     => $imageUrl,
             'caption' => $caption,
         ]);
