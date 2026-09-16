@@ -81,10 +81,22 @@ class PluginWhatsappbotConfig extends CommonGLPI {
         $fields['date_mod'] = date('Y-m-d H:i:s');
 
         if ($config) {
-            $DB->update('glpi_plugin_whatsappbot_configs', $fields, ['id' => $config['id']]);
+            $ok = $DB->update('glpi_plugin_whatsappbot_configs', $fields, ['id' => $config['id']]);
         } else {
             // Registro inicial: preenche o que não veio com os padrões da tabela.
-            $DB->insert('glpi_plugin_whatsappbot_configs', $fields);
+            $ok = $DB->insert('glpi_plugin_whatsappbot_configs', $fields);
+        }
+
+        // Sem isso, um erro de SQL (ex: coluna nova que ainda não existe na
+        // tabela porque o ALTER TABLE de uma atualização não foi rodado)
+        // ficava mudo — o $DB->update()/insert() falhava silenciosamente e
+        // a tela mostrava "salvo com sucesso" mesmo sem nada ter sido
+        // gravado de verdade.
+        if (!$ok) {
+            $errMsg = method_exists($DB, 'error') ? $DB->error() : '';
+            throw new \RuntimeException(
+                'Falha ao salvar no banco' . ($errMsg ? ": $errMsg" : ' (verifique se todas as colunas existem na tabela — pode faltar rodar um ALTER TABLE)')
+            );
         }
         return true;
     }
