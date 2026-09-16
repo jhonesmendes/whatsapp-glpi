@@ -13,6 +13,7 @@ class PluginWhatsappbotBot {
 
     // Estados da conversa
     const STATE_MENU                 = 'menu';
+    const STATE_MENU_BLOCKED         = 'menu_blocked';
     const STATE_OPEN_TICKET_DESC     = 'open_ticket_desc';
     const STATE_OPEN_TICKET_NAME     = 'open_ticket_name';
     const STATE_OPEN_TICKET_LOCATION = 'open_ticket_location';
@@ -96,6 +97,10 @@ class PluginWhatsappbotBot {
                 $this->handleMenu($from, $body, $session);
                 break;
 
+            case self::STATE_MENU_BLOCKED:
+                $this->handleMenuBlocked($from, $body, $session, $waName);
+                break;
+
             case self::STATE_OPEN_TICKET_DESC:
                 $this->handleOpenTicketDesc($from, $body, $session, $fromReal);
                 break;
@@ -154,27 +159,54 @@ class PluginWhatsappbotBot {
     /**
      * Usuário mandou algo que não é 1/2/3 enquanto está no menu (nome,
      * telefone, áudio, etc. — comum quando a pessoa não quer seguir o
-     * fluxo). Cobra até 3 vezes pra escolher uma opção; depois disso,
-     * para de insistir e fica em silêncio (sem travar a conversa — se a
-     * pessoa digitar "menu" mais tarde, volta a responder normalmente).
+     * fluxo). Cobra com duas mensagens diferentes (1ª e 2ª tentativa
+     * erradas); na 3ª, para de reexibir o menu e entra em
+     * STATE_MENU_BLOCKED — fica em silêncio até a pessoa digitar
+     * "chamado" (ou "menu"/"0"/"voltar"/"cancelar") pra retomar.
      */
     private function handleMenuNotRecognized(string $from, array $session): void {
         $context = $this->decodeContext($session['context'] ?? null);
-        $nudges  = (int)($context['menu_nudges'] ?? 0);
+        $nudges  = (int)($context['menu_nudges'] ?? 0) + 1;
+        $context['menu_nudges'] = $nudges;
+        $waName = $session['wa_name'] ?? '';
 
         if ($nudges >= 3) {
-            // Já cobramos o suficiente — fica quieto até a pessoa mandar
-            // "menu" (ou uma opção válida) por conta própria.
+            // 3ª tentativa errada: mensagem final, sem reexibir o menu, e
+            // entra em estado de silêncio até a pessoa pedir pra voltar.
+            $blocked = $this->config['menu_blocked_message']
+                ?: "😕 Por falta de abertura do chamado, não conseguimos seguir com seu atendimento.\n\n_Digite *Chamado* para voltar ao início_";
+            $this->wa->send($from, $blocked);
+            $this->updateSession($from, [
+                'state'   => self::STATE_MENU_BLOCKED,
+                'context' => $this->encodeContext($context)
+            ]);
             return;
         }
 
-        $context['menu_nudges'] = $nudges + 1;
         $this->updateSession($from, ['context' => $this->encodeContext($context)]);
 
-        $reminder = $this->config['menu_reminder_message']
-            ?: "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):";
+        $reminder = $nudges === 1
+            ? ($this->config['menu_reminder_message']
+                ?: "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):")
+            : ($this->config['menu_reminder_message_2']
+                ?: "Não consegui entender sua mensagem. Por favor, escolha uma das opções abaixo:");
+
         $this->wa->send($from, $reminder);
-        $this->sendMenu($from, $session['wa_name'] ?? '');
+        $this->sendMenu($from, $waName);
+    }
+
+    /**
+     * Bot em silêncio após 3 tentativas erradas no menu — só reage se a
+     * pessoa pedir explicitamente pra voltar ("chamado"). As outras
+     * palavras de escape ("menu"/"0"/"voltar"/"cancelar") já são
+     * tratadas globalmente em processIncoming() antes de chegar aqui.
+     */
+    private function handleMenuBlocked(string $from, string $body, array $session, string $waName): void {
+        if (strtolower(trim($body)) === 'chamado') {
+            $this->sendMenu($from, $waName);
+            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
+        }
+        // Qualquer outra coisa: fica em silêncio, sem responder nada.
     }
 
     /**

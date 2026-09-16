@@ -45,9 +45,19 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Enviada depois do nome — vira uma lista com as localizações cadastradas no GLPI, a resposta é obrigatória</span>
         </div>
         <div class="wa-field">
-          <label>Mensagem de cobrança quando o usuário não escolhe uma opção do menu</label>
+          <label>Mensagem de cobrança — 1ª tentativa errada no menu</label>
           <textarea name="menu_reminder_message" style="min-height:70px"><?= htmlspecialchars($config['menu_reminder_message'] ?? '') ?></textarea>
-          <span class="wa-hint">Enviada até 3 vezes quando a pessoa manda algo que não é 1/2/3 no menu (nome, telefone, áudio, etc). Depois da 3ª vez, o bot para de insistir e fica em silêncio até a pessoa digitar "menu"</span>
+          <span class="wa-hint">Enviada quando a pessoa manda algo que não é 1/2/3 no menu (nome, telefone, áudio, etc) pela primeira vez</span>
+        </div>
+        <div class="wa-field">
+          <label>Mensagem de cobrança — 2ª tentativa errada no menu</label>
+          <textarea name="menu_reminder_message_2" style="min-height:70px"><?= htmlspecialchars($config['menu_reminder_message_2'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada na segunda vez seguida que a pessoa não escolhe uma opção válida</span>
+        </div>
+        <div class="wa-field">
+          <label>Mensagem final — 3ª tentativa errada (bot para de insistir)</label>
+          <textarea name="menu_blocked_message" style="min-height:70px"><?= htmlspecialchars($config['menu_blocked_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada uma vez só na 3ª tentativa errada — depois o bot fica em silêncio até a pessoa digitar *chamado* (ou "menu"/"0"/"voltar"/"cancelar") para retomar</span>
         </div>
         <div class="wa-field">
           <label>Ação após chamado resolvido</label>

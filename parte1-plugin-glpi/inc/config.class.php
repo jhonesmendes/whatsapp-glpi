@@ -42,6 +42,8 @@ class PluginWhatsappbotConfig extends CommonGLPI {
             'ask_name_message'     => fn($v) => trim($v),
             'ask_location_message' => fn($v) => trim($v),
             'menu_reminder_message' => fn($v) => trim($v),
+            'menu_reminder_message_2' => fn($v) => trim($v),
+            'menu_blocked_message'  => fn($v) => trim($v),
             'glpi_api_url'         => fn($v) => trim($v),
             'glpi_app_token'       => fn($v) => trim($v),
             'glpi_user_token'      => fn($v) => trim($v),

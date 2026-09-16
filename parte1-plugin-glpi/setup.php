@@ -111,6 +111,8 @@ function plugin_whatsappbot_install() {
             `ask_name_message`      text,
             `ask_location_message`  text,
             `menu_reminder_message` text,
+            `menu_reminder_message_2` text,
+            `menu_blocked_message`  text,
             `timeout_minutes`       int          DEFAULT 15,
             `glpi_api_url`          varchar(255) DEFAULT '',
             `glpi_app_token`        varchar(255) DEFAULT '',
@@ -134,6 +136,8 @@ function plugin_whatsappbot_install() {
             'ask_name_message'        => "👤 Informe seu nome:",
             'ask_location_message'    => "📍 Informe sua filial/localização:",
             'menu_reminder_message'   => "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):",
+            'menu_reminder_message_2' => "Não consegui entender sua mensagem. Por favor, escolha uma das opções abaixo:",
+            'menu_blocked_message'    => "😕 Por falta de abertura do chamado, não conseguimos seguir com seu atendimento.\n\n_Digite *Chamado* para voltar ao início_",
             'date_mod'             => date('Y-m-d H:i:s')
         ]);
     } else {
@@ -145,6 +149,8 @@ function plugin_whatsappbot_install() {
             'ask_name_message'        => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_name_message` text AFTER `ask_description_message`",
             'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_name_message`",
             'menu_reminder_message'   => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message` text AFTER `ask_location_message`",
+            'menu_reminder_message_2' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message_2` text AFTER `menu_reminder_message`",
+            'menu_blocked_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_blocked_message` text AFTER `menu_reminder_message_2`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
@@ -165,6 +171,12 @@ function plugin_whatsappbot_install() {
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `menu_reminder_message` = '⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):'
             WHERE `menu_reminder_message` IS NULL OR `menu_reminder_message` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `menu_reminder_message_2` = 'Não consegui entender sua mensagem. Por favor, escolha uma das opções abaixo:'
+            WHERE `menu_reminder_message_2` IS NULL OR `menu_reminder_message_2` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `menu_blocked_message` = '😕 Por falta de abertura do chamado, não conseguimos seguir com seu atendimento.\n\n_Digite *Chamado* para voltar ao início_'
+            WHERE `menu_blocked_message` IS NULL OR `menu_blocked_message` = ''");
     }
 
     // Tabela de sessões/conversas ativas
