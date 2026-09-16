@@ -40,6 +40,7 @@ PluginWhatsappbotConfig::renderStyles();
         <span id="status-text">Clique em "Testar conexão" para verificar</span>
         <button type="button" class="btn-test" onclick="testConnection()">Testar conexão</button>
         <button type="button" class="btn-test" style="background:#128c7e" onclick="showQrCode()">📷 Ver QR code</button>
+        <button type="button" class="btn-test" style="background:#e74c3c" onclick="disconnectWhatsapp()">🔌 Desconectar</button>
       </div>
 
       <div class="wa-grid">
@@ -140,6 +141,33 @@ function testConnection() {
       dot.className = 'wa-dot red';
       text.textContent = '❌ Erro de rede: ' + e.message;
       console.error('Teste de conexão falhou:', e);
+    });
+}
+
+const WA_DISCONNECT_URL = <?= json_encode(PluginWhatsappbotConfig::ajaxUrl('disconnect.php')) ?>;
+
+function disconnectWhatsapp() {
+  if (!confirm('Tem certeza que quer desconectar o WhatsApp? Vai ser preciso escanear um novo QR code para reconectar.')) {
+    return;
+  }
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  text.textContent = 'Desconectando...';
+  dot.className = 'wa-dot gray';
+
+  fetch(WA_DISCONNECT_URL, {
+    method: 'POST',
+    body: new FormData(),
+    headers: { 'X-Glpi-Csrf-Token': WA_CSRF_TOKEN }
+  })
+    .then(r => r.json())
+    .then(data => {
+      dot.className = data.ok ? 'wa-dot red' : 'wa-dot red';
+      text.textContent = (data.ok ? '🔌 ' : '❌ ') + data.message;
+    })
+    .catch(e => {
+      dot.className = 'wa-dot red';
+      text.textContent = '❌ Erro de rede: ' + e.message;
     });
 }
 

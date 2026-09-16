@@ -13,6 +13,7 @@ import makeWASocket, {
 import { Boom }   from '@hapi/boom';
 import axios      from 'axios';
 import qrcode     from 'qrcode-terminal';
+import fs         from 'fs';
 import { logger } from './logger.js';
 
 const SESSION_DIR  = process.env.SESSION_DIR   || './sessions';
@@ -103,7 +104,20 @@ export async function createBot() {
           logger.error('Número máximo de reconexões atingido. Reinicie o servidor manualmente.');
         }
       } else {
-        logger.warn('Sessão encerrada (logout). Delete a pasta sessions/ e reinicie para um novo QR.');
+        // Logout de verdade (usuário desvinculou pelo celular, ou clicou em
+        // "Desconectar" no GLPI): antes isso só avisava no log e exigia
+        // reiniciar o servidor manualmente + apagar a pasta de sessão à
+        // mão, deixando a tela de QR do GLPI travada em "Aguardando QR
+        // code..." pra sempre. Agora limpa as credenciais velhas sozinho e
+        // já gera um QR novo, sem precisar mexer no servidor.
+        logger.warn('Sessão encerrada (logout). Limpando credenciais antigas e gerando novo QR automaticamente...');
+        try {
+          await fs.promises.rm(SESSION_DIR, { recursive: true, force: true });
+        } catch (err) {
+          logger.error({ err }, 'Erro ao limpar pasta de sessão');
+        }
+        clientState.reconnectCount = 0;
+        setTimeout(createBot, 2000);
       }
     }
 
