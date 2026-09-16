@@ -73,16 +73,20 @@ class PluginWhatsappbotBot {
             return;
         }
 
-        // Se está em atendimento humano, não processa
-        if ($session['is_human']) {
-            // Apenas registra — humano responde manualmente via painel
+        // Detecta "cancelar" / "menu" / "0" / "voltar" em qualquer estado —
+        // inclusive durante atendimento humano. Sem isso, quem foi
+        // transferido pra um técnico ficava travado pra sempre esperando,
+        // sem conseguir voltar ao atendimento automático sozinho caso
+        // nenhum técnico assumisse a conversa pelo painel.
+        if (in_array(strtolower($body), ['cancelar', 'menu', '0', 'voltar'])) {
+            $this->sendMenu($from, $waName);
+            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null, 'is_human' => 0]);
             return;
         }
 
-        // Detecta "cancelar" / "menu" / "0" em qualquer estado
-        if (in_array(strtolower($body), ['cancelar', 'menu', '0', 'voltar'])) {
-            $this->sendMenu($from, $waName);
-            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
+        // Se está em atendimento humano, não processa
+        if ($session['is_human']) {
+            // Apenas registra — humano responde manualmente via painel
             return;
         }
 
