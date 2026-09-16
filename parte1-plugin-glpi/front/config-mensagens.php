@@ -45,6 +45,11 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Enviada depois do nome — vira uma lista com as localizações cadastradas no GLPI, a resposta é obrigatória</span>
         </div>
         <div class="wa-field">
+          <label>Mensagem de cobrança quando o usuário não escolhe uma opção do menu</label>
+          <textarea name="menu_reminder_message" style="min-height:70px"><?= htmlspecialchars($config['menu_reminder_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada até 3 vezes quando a pessoa manda algo que não é 1/2/3 no menu (nome, telefone, áudio, etc). Depois da 3ª vez, o bot para de insistir e fica em silêncio até a pessoa digitar "menu"</span>
+        </div>
+        <div class="wa-field">
           <label>Ação após chamado resolvido</label>
           <select name="post_resolve_action">
             <option value="ask_rating" <?= ($config['post_resolve_action'] ?? '') === 'ask_rating' ? 'selected' : '' ?>>Pedir avaliação (1-5) e transferir se &lt; 3</option>

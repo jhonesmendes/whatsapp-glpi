@@ -110,6 +110,7 @@ function plugin_whatsappbot_install() {
             `ask_description_message` text,
             `ask_name_message`      text,
             `ask_location_message`  text,
+            `menu_reminder_message` text,
             `timeout_minutes`       int          DEFAULT 15,
             `glpi_api_url`          varchar(255) DEFAULT '',
             `glpi_app_token`        varchar(255) DEFAULT '',
@@ -132,6 +133,7 @@ function plugin_whatsappbot_install() {
             'ask_description_message' => "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_",
             'ask_name_message'        => "👤 Informe seu nome:",
             'ask_location_message'    => "📍 Informe sua filial/localização:",
+            'menu_reminder_message'   => "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):",
             'date_mod'             => date('Y-m-d H:i:s')
         ]);
     } else {
@@ -142,6 +144,7 @@ function plugin_whatsappbot_install() {
             'ask_description_message' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_description_message` text AFTER `welcome_message`",
             'ask_name_message'        => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_name_message` text AFTER `ask_description_message`",
             'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_name_message`",
+            'menu_reminder_message'   => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message` text AFTER `ask_location_message`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
@@ -159,6 +162,9 @@ function plugin_whatsappbot_install() {
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `ask_location_message` = '📍 Informe sua filial/localização:'
             WHERE `ask_location_message` IS NULL OR `ask_location_message` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `menu_reminder_message` = '⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):'
+            WHERE `menu_reminder_message` IS NULL OR `menu_reminder_message` = ''");
     }
 
     // Tabela de sessões/conversas ativas

@@ -143,10 +143,34 @@ class PluginWhatsappbotBot {
                 break;
 
             default:
-                // Mensagem não reconhecida → reexibe menu
-                $this->wa->send($from, "Opção não reconhecida. Por favor, escolha uma das opções abaixo:");
-                $this->sendMenu($from, $session['wa_name'] ?? '');
+                $this->handleMenuNotRecognized($from, $session);
         }
+    }
+
+    /**
+     * Usuário mandou algo que não é 1/2/3 enquanto está no menu (nome,
+     * telefone, áudio, etc. — comum quando a pessoa não quer seguir o
+     * fluxo). Cobra até 3 vezes pra escolher uma opção; depois disso,
+     * para de insistir e fica em silêncio (sem travar a conversa — se a
+     * pessoa digitar "menu" mais tarde, volta a responder normalmente).
+     */
+    private function handleMenuNotRecognized(string $from, array $session): void {
+        $context = $this->decodeContext($session['context'] ?? null);
+        $nudges  = (int)($context['menu_nudges'] ?? 0);
+
+        if ($nudges >= 3) {
+            // Já cobramos o suficiente — fica quieto até a pessoa mandar
+            // "menu" (ou uma opção válida) por conta própria.
+            return;
+        }
+
+        $context['menu_nudges'] = $nudges + 1;
+        $this->updateSession($from, ['context' => $this->encodeContext($context)]);
+
+        $reminder = $this->config['menu_reminder_message']
+            ?: "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):";
+        $this->wa->send($from, $reminder);
+        $this->sendMenu($from, $session['wa_name'] ?? '');
     }
 
     /**
