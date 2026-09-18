@@ -193,11 +193,26 @@ class PluginWhatsappbotConfig extends CommonGLPI {
             return ['ok' => false, 'message' => "Servidor respondeu HTTP $code"];
         }
 
-        $data = json_decode($resp, true);
+        $data   = json_decode($resp, true);
+        $status = $data['status'] ?? 'unknown';
+
+        // O servidor Baileys respondeu (HTTP 200), mas isso só confirma que
+        // ele está de pé — não que o WhatsApp está conectado. Antes isso
+        // sempre voltava "ok" (mostrando "✅ Conectado" mesmo desconectado,
+        // ou pedindo QR code). Só é sucesso de verdade quando status="open".
+        if ($status !== 'open') {
+            return [
+                'ok'      => false,
+                'message' => "Servidor Baileys no ar, mas WhatsApp não está conectado (status: $status). Clique em \"Ver QR code\" para conectar.",
+                'status'  => $status,
+                'number'  => $data['number'] ?? '',
+            ];
+        }
+
         return [
             'ok'      => true,
             'message' => 'Conectado',
-            'status'  => $data['status'] ?? 'unknown',
+            'status'  => $status,
             'number'  => $data['number'] ?? '',
         ];
     }

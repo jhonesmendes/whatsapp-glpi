@@ -101,7 +101,15 @@ export async function createBot() {
           logger.info({ attempt: clientState.reconnectCount, delay }, 'Reconectando...');
           setTimeout(createBot, delay);
         } else {
-          logger.error('Número máximo de reconexões atingido. Reinicie o servidor manualmente.');
+          // Comum quando o QR expira (Baileys só permite renovar um número
+          // limitado de vezes) e ninguém escaneia a tempo — antes disso
+          // desistia de vez e exigia reiniciar o servidor manualmente, o
+          // que travava a tela de QR do GLPI em "Aguardando QR code..."
+          // pra sempre. Em vez de desistir, zera o contador e continua
+          // tentando de tempos em tempos (1 min), sem precisar de reinício.
+          logger.error('Número máximo de reconexões atingido — continuando a tentar a cada 1 minuto.');
+          clientState.reconnectCount = 0;
+          setTimeout(createBot, 60000);
         }
       } else {
         // Logout de verdade (usuário desvinculou pelo celular, ou clicou em
