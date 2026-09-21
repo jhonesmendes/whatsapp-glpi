@@ -499,6 +499,19 @@ class PluginWhatsappbotBot {
             : "😔 Obrigado pelo feedback. Vou transferir para um técnico para entender melhor."
         );
 
+        // Registra a nota como acompanhamento privado no próprio chamado —
+        // sem isso, a avaliação era só processada em memória pra decidir a
+        // resposta e depois descartada, sem deixar nenhum rastro visível
+        // pro técnico na tela do chamado.
+        if (!empty($session['last_ticket_id'])) {
+            $stars = str_repeat('⭐', $nota) . str_repeat('☆', 5 - $nota);
+            $this->glpiApi->addFollowup(
+                (int)$session['last_ticket_id'],
+                "Avaliação do usuário via WhatsApp: {$nota}/5 {$stars}",
+                true // is_private
+            );
+        }
+
         if ($nota < 3) {
             $this->transferToHuman($from, $session);
         } else {
