@@ -642,6 +642,15 @@ class PluginWhatsappbotBot {
             return;
         }
 
+        // Só compara com o solicitante quando ele realmente tem conta GLPI
+        // vinculada (users_id > 0). Números fixos são guardados com id=0
+        // (não têm conta associada) — sem essa checagem de ">0", sempre que
+        // o solicitante NÃO tivesse conta vinculada (users_id também 0,
+        // caso comum), a comparação "0 === 0" fazia o código achar que o
+        // número fixo era o próprio solicitante e pular ele por engano,
+        // silenciosamente notificando ninguém.
+        $requesterId = (int)($session['users_id'] ?? 0);
+
         $sent  = 0;
         $fails = 0;
         foreach ($technicians as $tech) {
@@ -649,7 +658,7 @@ class PluginWhatsappbotBot {
             if (empty($techNumber)) continue;
 
             // Não notifica o próprio solicitante se ele for técnico
-            if (isset($session['users_id']) && (int)$session['users_id'] === (int)$tech['id']) continue;
+            if ($requesterId > 0 && $requesterId === (int)$tech['id']) continue;
 
             $ok = $this->wa->send($techNumber, $msg);
             if ($ok) {
