@@ -4,7 +4,8 @@
  * Recebe mensagens e as encaminha para o GLPI via webhook.
  */
 
-import makeWASocket, {
+import {
+  makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
