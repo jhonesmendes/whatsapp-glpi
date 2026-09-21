@@ -53,6 +53,13 @@ class PluginWhatsappbotBot {
         if (empty($from) || (empty($body) && empty($media))) return;
         if (!($this->config['is_active'] ?? false)) return;
 
+        // Devolve ao menu qualquer conversa parada há mais tempo que o
+        // "Timeout sem resposta" configurado — inclui quem ficou esperando
+        // atendimento humano sem ninguém assumir. Roda antes de carregar a
+        // sessão do remetente atual: se a dele mesma estiver estourada,
+        // essa mensagem já processa a partir do menu, do zero.
+        $this->releaseTimedOutSessions();
+
         // Carrega ou cria sessão
         $session = $this->getOrCreateSession($from, $waName);
 
@@ -812,6 +819,49 @@ class PluginWhatsappbotBot {
     // ---------------------------------------------------------------
     // Sessões no banco
     // ---------------------------------------------------------------
+
+    /**
+     * Devolve ao menu inicial qualquer sessão parada (sem nenhuma mensagem
+     * nova) há mais tempo que "Timeout sem resposta" — inclui quem ficou
+     * esperando atendimento humano sem ninguém assumir, ou travado no meio
+     * da abertura de um chamado. O usuário recebe um aviso e, se quiser
+     * continuar, precisa começar de novo digitando *menu*.
+     *
+     * O plugin não tem um processo de fundo (cron) rodando sozinho — essa
+     * checagem é chamada a cada mensagem recebida (ver processIncoming()),
+     * o que já é suficiente pra manter as sessões em dia sempre que o bot
+     * está sendo usado por alguém. Faz a varredura só 1 a cada ~10
+     * mensagens (não a cada uma) pra não bater no banco à toa.
+     */
+    private function releaseTimedOutSessions(): void {
+        global $DB;
+
+        $timeoutMin = (int)($this->config['timeout_minutes'] ?? 0);
+        if ($timeoutMin <= 0) return;
+        if (random_int(1, 10) !== 1) return;
+
+        $cutoff = date('Y-m-d H:i:s', time() - $timeoutMin * 60);
+
+        $stale = $DB->request([
+            'FROM'  => 'glpi_plugin_whatsappbot_sessions',
+            'WHERE' => [
+                'date_last_msg' => ['<', $cutoff],
+                'state'         => ['<>', self::STATE_MENU],
+            ],
+        ]);
+
+        foreach ($stale as $s) {
+            $this->wa->send($s['wa_number'],
+                "⏰ Sua conversa foi encerrada por inatividade.\n\n_Digite *menu* para começar de novo_"
+            );
+            $this->updateSession($s['wa_number'], [
+                'state'    => self::STATE_MENU,
+                'context'  => null,
+                'is_human' => 0,
+            ]);
+            $this->log("releaseTimedOutSessions: sessão {$s['wa_number']} devolvida ao menu (parada desde {$s['date_last_msg']})");
+        }
+    }
 
     private function getOrCreateSession(string $from, string $name): array {
         global $DB;

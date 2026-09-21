@@ -66,6 +66,7 @@ PluginWhatsappbotConfig::renderStyles();
           <label>Timeout sem resposta (minutos)</label>
           <input type="text" name="timeout_minutes"
             value="<?= (int)($config['timeout_minutes'] ?? 15) ?>">
+          <span class="wa-hint">Depois desse tempo sem nenhuma mensagem nova, a conversa volta pro menu inicial sozinha e o usuário é avisado — vale também para quem está esperando atendimento humano (opção 3) sem ninguém assumir. Use 0 para desativar.</span>
         </div>
       </div>
 

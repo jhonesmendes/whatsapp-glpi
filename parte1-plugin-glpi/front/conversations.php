@@ -8,6 +8,7 @@ include('../../../inc/includes.php');
 Session::checkRight('config', READ);
 
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
+include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/whatsapp.class.php');
 
 global $DB;
 
@@ -27,13 +28,24 @@ if (!empty($_GET['take'])) {
     exit;
 }
 
-// Ação: devolver ao bot
+// Ação: devolver ao bot (finaliza o atendimento humano)
 if (!empty($_GET['release'])) {
     $wa_number = $_GET['release'];
     $DB->update('glpi_plugin_whatsappbot_sessions', [
-        'is_human' => 0,
-        'human_agent' => ''
+        'is_human'    => 0,
+        'human_agent' => '',
+        'state'       => 'menu',
+        'context'     => null,
     ], ['wa_number' => $wa_number]);
+
+    // Antes isso só mudava o estado no banco, em silêncio — o usuário
+    // continuava achando que estava esperando um humano, sem saber que o
+    // atendimento tinha sido encerrado, até mandar mensagem de novo.
+    $config = PluginWhatsappbotConfig::getConfig();
+    $wa     = new PluginWhatsappbotWhatsapp($config);
+    $wa->send($wa_number, "✅ Atendimento encerrado pelo técnico.\n\n_Digite *menu* para novas opções_");
+
+    Session::addMessageAfterRedirect("Conversa devolvida ao bot.", true, INFO);
     Html::back();
     exit;
 }
