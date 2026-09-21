@@ -157,7 +157,7 @@ class PluginWhatsappbotBot {
         switch (trim($body)) {
             case '1':
                 $askDesc = $this->config['ask_description_message']
-                    ?: "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_";
+                    ?: "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite 0 para voltar ao menu_";
                 $this->wa->send($from, $askDesc);
                 $this->updateSession($from, ['state' => self::STATE_OPEN_TICKET_DESC]);
                 break;
@@ -461,7 +461,7 @@ class PluginWhatsappbotBot {
 
         } else {
             $this->wa->send($from,
-                "❌ Não foi possível abrir o chamado no momento. Tente novamente ou escolha a opção *3* para falar com um técnico."
+                "❌ Não foi possível abrir o chamado no momento. Tente novamente ou escolha a *opção 3* para falar com um técnico."
             );
             $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
         }
@@ -491,7 +491,7 @@ class PluginWhatsappbotBot {
         $tickets = $this->glpiApi->getUserTickets($userId, 5);
 
         if (empty($tickets)) {
-            $this->wa->send($from, "📭 Você não possui chamados abertos no momento.\n\nDigite *1* para abrir um novo chamado.");
+            $this->wa->send($from, "📭 Você não possui chamados abertos no momento.\n\nDigite a *opção 1* para abrir um novo chamado.");
             return;
         }
 
@@ -619,7 +619,7 @@ class PluginWhatsappbotBot {
         if ($action === 'ask_rating') {
             sleep(1);
             $this->wa->send($from,
-                "⭐ Como você avalia o atendimento?\n\nResponda com um número de *1* a *5*:\n\n1 — Péssimo\n2 — Ruim\n3 — Regular\n4 — Bom\n5 — Excelente"
+                "⭐ Como você avalia o atendimento?\n\nResponda com um número de 1 a 5:\n\n*1 — Péssimo*\n*2 — Ruim*\n*3 — Regular*\n*4 — Bom*\n*5 — Excelente*"
             );
             $this->updateSession($from, ['state' => self::STATE_RATING, 'is_human' => 0]);
         } else {
@@ -759,7 +759,7 @@ class PluginWhatsappbotBot {
 
     private function sendMenu(string $from, string $name): void {
         $firstName = explode(' ', $name)[0] ?? 'usuário';
-        $welcome   = $this->config['welcome_message'] ?? "Olá! Como posso ajudar?\n\n*1* — Abrir chamado\n*2* — Consultar andamento\n*3* — Falar com humano";
+        $welcome   = $this->config['welcome_message'] ?? "Olá! Como posso ajudar?\n\n*1 — Abrir chamado*\n*2 — Consultar andamento*\n*3 — Falar com humano*";
         $this->wa->send($from, $welcome);
         $this->saveMessage($from, 'out', $welcome);
     }
