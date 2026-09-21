@@ -70,7 +70,7 @@ MAX_RECONNECT=5
 
 ```bash
 # Inicia o serviço
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 
 # Verifica se está rodando
 pm2 status
@@ -159,7 +159,7 @@ whatsapp-glpi/parte2-baileys-server/
 │   └── logger.js       ← Logger Pino
 ├── sessions/           ← Sessão WhatsApp (criada automaticamente, fora do git)
 ├── logs/               ← Logs do servidor (fora do git)
-├── ecosystem.config.js ← Configuração PM2
+├── ecosystem.config.cjs ← Configuração PM2
 ├── .env                ← Suas configurações (fora do git, nunca versionar!)
 └── package.json
 ```
@@ -179,6 +179,19 @@ whatsapp-glpi/parte2-baileys-server/
 Todas as rotas exigem o header `x-bot-token`, exceto `/health` (sem
 autenticação) e `/qr-view` (usa `?token=` na própria URL, pensado para
 ser aberto direto no navegador).
+
+## Solução de problemas
+
+**`SyntaxError: Cannot use import statement outside a module`:**
+- O projeto usa ES Modules (`import`/`export`), o que exige o campo
+  `"type": "module"` no `package.json` — ele já vem assim no
+  repositório. Se aparecer esse erro depois de trocar de VM/servidor,
+  confira se o `package.json` copiado é realmente o deste repositório
+  (`cat package.json | grep type`) e não uma cópia antiga sem esse
+  campo. Rode `git pull` para garantir a versão mais recente.
+- O `ecosystem.config.cjs` (config do PM2) é propositalmente `.cjs`
+  (CommonJS), mesmo com o resto do projeto em ESM — é o único arquivo
+  que o Node/PM2 carrega antes de saber que o projeto é ESM.
 
 ## Logs
 
