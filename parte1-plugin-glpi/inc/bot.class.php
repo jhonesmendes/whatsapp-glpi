@@ -16,6 +16,7 @@ class PluginWhatsappbotBot {
     const STATE_MENU_BLOCKED         = 'menu_blocked';
     const STATE_OPEN_TICKET_DESC     = 'open_ticket_desc';
     const STATE_OPEN_TICKET_NAME     = 'open_ticket_name';
+    const STATE_OPEN_TICKET_EMAIL    = 'open_ticket_email';
     const STATE_OPEN_TICKET_LOCATION = 'open_ticket_location';
     const STATE_CONSULT_TICKET       = 'consult_ticket';
     const STATE_HUMAN                = 'human';
@@ -107,6 +108,10 @@ class PluginWhatsappbotBot {
 
             case self::STATE_OPEN_TICKET_NAME:
                 $this->handleOpenTicketName($from, $body, $session);
+                break;
+
+            case self::STATE_OPEN_TICKET_EMAIL:
+                $this->handleOpenTicketEmail($from, $body, $session);
                 break;
 
             case self::STATE_OPEN_TICKET_LOCATION:
@@ -248,6 +253,41 @@ class PluginWhatsappbotBot {
         $context         = $this->decodeContext($session['context'] ?? null);
         $context['name'] = $name;
 
+        $askEmail = $this->config['ask_email_message'] ?: "📧 Informe seu e-mail:";
+        $this->wa->send($from, $askEmail);
+        $this->updateSession($from, [
+            'state'   => self::STATE_OPEN_TICKET_EMAIL,
+            'context' => $this->encodeContext($context)
+        ]);
+    }
+
+    /**
+     * Aguarda o e-mail de quem está solicitando (passo 3 de abrir chamado) —
+     * obrigatório. A maioria das contas do GLPI não tem celular cadastrado
+     * (o campo que findUserByPhone() usa), mas praticamente todas têm
+     * e-mail — então usamos o e-mail pra vincular o solicitante a uma conta
+     * já existente no GLPI (users_id), o principal critério de identificação.
+     */
+    private function handleOpenTicketEmail(string $from, string $body, array $session): void {
+        $email = trim($body);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->wa->send($from, "⚠️ E-mail inválido. Por favor, informe um e-mail válido (ex: nome@empresa.com).");
+            return;
+        }
+
+        $context          = $this->decodeContext($session['context'] ?? null);
+        $context['email'] = $email;
+
+        // Tenta vincular a uma conta GLPI já existente pelo e-mail informado.
+        // Se encontrar, isso substitui qualquer vínculo anterior (feito por
+        // telefone na criação da sessão, que raramente acerta — a maioria
+        // dos usuários não tem celular cadastrado no GLPI).
+        $userId = $this->glpiApi->findUserByEmail($email);
+        if ($userId > 0) {
+            $session['users_id'] = $userId;
+            $this->updateSession($from, ['users_id' => $userId]);
+        }
+
         // Busca localizações cadastradas no GLPI para o usuário escolher
         // numa lista (em vez de digitar texto livre) — assim o chamado usa
         // o campo nativo "Localização" do GLPI, não um texto solto.
@@ -278,6 +318,7 @@ class PluginWhatsappbotBot {
             // vincular ao campo de localização.
             $description = $context['description'] ?? 'Sem descrição';
             $fromReal    = $context['fromReal'] ?? null;
+            $name        = $context['name'] ?? null;
             $categories  = $this->glpiApi->getCategories();
             $catId       = $this->ai->detectCategory($description, $categories);
             $this->createTicket($from, $description, 0, $catId, $session, $fromReal, $name);
@@ -285,7 +326,7 @@ class PluginWhatsappbotBot {
     }
 
     /**
-     * Aguarda escolha da localização/filial (passo 3 de abrir chamado) —
+     * Aguarda escolha da localização/filial (passo 4 de abrir chamado) —
      * obrigatório. Depois disso, a categoria é escolhida automaticamente
      * pela IA com base na descrição, e o chamado é criado.
      */

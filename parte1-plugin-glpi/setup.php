@@ -109,6 +109,7 @@ function plugin_whatsappbot_install() {
             `welcome_message`       text,
             `ask_description_message` text,
             `ask_name_message`      text,
+            `ask_email_message`     text,
             `ask_location_message`  text,
             `menu_reminder_message` text,
             `menu_reminder_message_2` text,
@@ -134,6 +135,7 @@ function plugin_whatsappbot_install() {
             'openai_system_prompt' => "Você é o assistente de TI da empresa. Organize as informações de chamados de forma clara e amigável em português. Use emojis com moderação. Nunca invente dados — use somente o que veio da API do GLPI. Seja conciso e direto.",
             'ask_description_message' => "📋 *Abrir chamado*\n\nDescreva o problema que está tendo.\n\nDigite uma descrição clara (mínimo 10 caracteres):\n\n_Digite *0* para voltar ao menu_",
             'ask_name_message'        => "👤 Informe seu nome:",
+            'ask_email_message'       => "📧 Informe seu e-mail:",
             'ask_location_message'    => "📍 Informe sua filial/localização:",
             'menu_reminder_message'   => "⚠️ Para seguir, é necessário escolher uma das opções abaixo (é preciso *abrir um chamado* para que a gente possa te ajudar):",
             'menu_reminder_message_2' => "Não consegui entender sua mensagem. Por favor, escolha uma das opções abaixo:",
@@ -147,7 +149,8 @@ function plugin_whatsappbot_install() {
         $newColumns = [
             'ask_description_message' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_description_message` text AFTER `welcome_message`",
             'ask_name_message'        => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_name_message` text AFTER `ask_description_message`",
-            'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_name_message`",
+            'ask_email_message'       => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_email_message` text AFTER `ask_name_message`",
+            'ask_location_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `ask_location_message` text AFTER `ask_email_message`",
             'menu_reminder_message'   => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message` text AFTER `ask_location_message`",
             'menu_reminder_message_2' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message_2` text AFTER `menu_reminder_message`",
             'menu_blocked_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_blocked_message` text AFTER `menu_reminder_message_2`",
@@ -165,6 +168,9 @@ function plugin_whatsappbot_install() {
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `ask_name_message` = '👤 Informe seu nome:'
             WHERE `ask_name_message` IS NULL OR `ask_name_message` = ''");
+        $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
+            `ask_email_message` = '📧 Informe seu e-mail:'
+            WHERE `ask_email_message` IS NULL OR `ask_email_message` = ''");
         $DB->query("UPDATE `glpi_plugin_whatsappbot_configs` SET
             `ask_location_message` = '📍 Informe sua filial/localização:'
             WHERE `ask_location_message` IS NULL OR `ask_location_message` = ''");

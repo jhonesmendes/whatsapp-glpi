@@ -252,6 +252,69 @@ class PluginWhatsappbotGlpiApi {
         return 0;
     }
 
+    /**
+     * Busca usuário pelo e-mail cadastrado no GLPI. A maioria dos usuários
+     * não tem celular preenchido (campo usado por findUserByPhone()), mas
+     * praticamente todos têm e-mail — por isso o fluxo do bot pede o e-mail
+     * como segunda forma de vincular o solicitante a uma conta já existente.
+     *
+     * O e-mail não é uma coluna de "glpi_users" (fica em "glpi_useremails",
+     * tabela relacionada), então não dá pra usar searchText como em
+     * findUserByPhone(). Em vez de arriscar um ID de search option fixo
+     * (muda entre instalações/idiomas), descobrimos os IDs certos via
+     * /listSearchOptions/User em tempo de execução.
+     */
+    public function findUserByEmail(string $email): int {
+        $email = trim($email);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return 0;
+        if (!$this->initSession()) return 0;
+
+        $options = $this->request('GET', '/listSearchOptions/User');
+        if (!is_array($options)) {
+            $this->killSession();
+            return 0;
+        }
+
+        $emailOptId = $this->findSearchOptionId($options, 'glpi_useremails', 'email');
+        $idOptId    = $this->findSearchOptionId($options, 'glpi_users', 'id');
+
+        if (!$emailOptId || !$idOptId) {
+            $this->log("findUserByEmail: search options não encontradas (email={$emailOptId}, id={$idOptId})");
+            $this->killSession();
+            return 0;
+        }
+
+        $resp = $this->request('GET', '/search/User', [], [], [
+            'criteria[0][field]'      => $emailOptId,
+            'criteria[0][searchtype]' => 'equals',
+            'criteria[0][value]'      => $email,
+            'forcedisplay[0]'         => $idOptId,
+            'range'                   => '0-1',
+        ]);
+
+        $rows = $resp['data'] ?? [];
+        $this->killSession();
+
+        if (empty($rows)) return 0;
+        $row = $rows[0];
+        return (int)($row[$idOptId] ?? $row[(string)$idOptId] ?? 0);
+    }
+
+    /**
+     * Procura, na lista de /listSearchOptions/{itemtype}, o ID da opção
+     * cujo campo/tabela batem com o informado — usado para montar critérios
+     * de busca sem depender de IDs fixos (que variam entre instalações).
+     */
+    private function findSearchOptionId(array $options, string $table, string $field): int {
+        foreach ($options as $id => $opt) {
+            if (!is_array($opt)) continue;
+            if (($opt['table'] ?? '') === $table && ($opt['field'] ?? '') === $field) {
+                return (int)$id;
+            }
+        }
+        return 0;
+    }
+
     // ---------------------------------------------------------------
     // Técnicos — busca para notificação de novo chamado
     // ---------------------------------------------------------------

@@ -40,6 +40,11 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Enviada logo após a descrição — a resposta é obrigatória e é usada como "Solicitante" no chamado, em vez do nome de contato do WhatsApp</span>
         </div>
         <div class="wa-field">
+          <label>Mensagem pedindo o e-mail de quem está solicitando</label>
+          <textarea name="ask_email_message" style="min-height:70px"><?= htmlspecialchars($config['ask_email_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada logo após o nome — usada para tentar vincular o solicitante a uma conta já existente no GLPI (a maioria dos usuários não tem celular cadastrado, mas quase todos têm e-mail)</span>
+        </div>
+        <div class="wa-field">
           <label>Mensagem pedindo a localização/filial</label>
           <textarea name="ask_location_message" style="min-height:70px"><?= htmlspecialchars($config['ask_location_message'] ?? '') ?></textarea>
           <span class="wa-hint">Enviada depois do nome — vira uma lista com as localizações cadastradas no GLPI, a resposta é obrigatória</span>
