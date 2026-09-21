@@ -214,6 +214,108 @@ class PluginWhatsappbotGlpiApi {
     }
 
     // ---------------------------------------------------------------
+    // Documentos (anexos de imagem/documento enviados pelo WhatsApp)
+    // ---------------------------------------------------------------
+
+    /**
+     * Envia um arquivo (imagem/documento recebido do WhatsApp) como um
+     * Document avulso no GLPI, ainda sem vínculo com nenhum chamado —
+     * o chamado normalmente nem existe ainda nesse ponto do fluxo (o
+     * anexo chega junto da descrição, antes de nome/e-mail/localização).
+     * Vincule ao chamado depois com linkDocumentToTicket().
+     *
+     * Diferente dos outros métodos desta classe, usa multipart/form-data
+     * em vez de JSON — é como a API do GLPI espera upload de arquivo
+     * (ver documentação oficial do endpoint POST /Document).
+     *
+     * Retorna o ID do documento criado, ou 0 em caso de falha.
+     */
+    public function uploadDocument(string $base64, string $mimetype, string $filename): int {
+        if (!$this->initSession()) return 0;
+
+        $binary = base64_decode($base64, true);
+        if ($binary === false || $binary === '') {
+            $this->killSession();
+            return 0;
+        }
+
+        $filename = $filename !== '' ? $filename : 'anexo';
+        $tmpPath  = tempnam(sys_get_temp_dir(), 'wabot_doc_');
+        file_put_contents($tmpPath, $binary);
+
+        $manifest = json_encode([
+            'input' => [
+                'name'      => $filename,
+                '_filename' => [$filename],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $ch = curl_init($this->baseUrl . '/Document');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_CUSTOMREQUEST  => 'POST',
+            CURLOPT_HTTPHEADER     => [
+                'App-Token: '     . $this->appToken,
+                'Session-Token: ' . $this->sessionToken,
+                // Sem "Content-Type" aqui de propósito: ao passar um array
+                // em CURLOPT_POSTFIELDS, o curl monta o multipart/form-data
+                // sozinho (com o boundary certo) — declarar manualmente
+                // quebraria isso.
+            ],
+            CURLOPT_POSTFIELDS => [
+                'uploadManifest' => $manifest,
+                'filename[]'     => new \CURLFile($tmpPath, $mimetype ?: 'application/octet-stream', $filename),
+            ],
+        ]);
+
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        @unlink($tmpPath);
+        $this->killSession();
+
+        if ($err) {
+            $this->log("uploadDocument CURL ERROR: $err");
+            return 0;
+        }
+
+        $decoded = json_decode($resp, true);
+        if ($code >= 400 || !isset($decoded['id'])) {
+            $this->log("uploadDocument HTTP $code: " . substr((string)$resp, 0, 300));
+            return 0;
+        }
+
+        return (int)$decoded['id'];
+    }
+
+    /**
+     * Vincula um documento já existente (criado por uploadDocument()) a um
+     * chamado, via Document_Item.
+     */
+    public function linkDocumentToTicket(int $documentId, int $ticketId): bool {
+        if ($documentId <= 0 || $ticketId <= 0) return false;
+        if (!$this->initSession()) return false;
+
+        $result = $this->request('POST', '/Document_Item', [
+            'input' => [
+                'documents_id' => $documentId,
+                'items_id'     => $ticketId,
+                'itemtype'     => 'Ticket',
+            ]
+        ]);
+
+        $this->killSession();
+
+        if (!isset($result['id'])) {
+            $this->log("linkDocumentToTicket falhou (doc={$documentId}, ticket={$ticketId}): " . json_encode($result));
+            return false;
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------
     // Usuários
     // ---------------------------------------------------------------
 

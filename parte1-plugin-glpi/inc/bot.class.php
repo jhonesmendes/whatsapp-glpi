@@ -42,8 +42,15 @@ class PluginWhatsappbotBot {
         // (contatos com privacidade "@lid" ativada só expõem um ID
         // pseudônimo em $from — nem sempre dá pra saber o número real).
         $fromReal = $data['fromReal'] ?? null;
+        // Imagem/documento enviado junto (ver STATE_OPEN_TICKET_DESC) —
+        // formato: ['base64' => ..., 'mimetype' => ..., 'filename' => ...],
+        // ou ['tooLarge' => true] quando o Baileys descartou por passar do
+        // limite configurado.
+        $media    = $data['media'] ?? null;
 
-        if (empty($from) || empty($body)) return;
+        // Uma imagem/documento sem legenda chega com body vazio — só
+        // descarta a mensagem se não tiver nem texto nem anexo.
+        if (empty($from) || (empty($body) && empty($media))) return;
         if (!($this->config['is_active'] ?? false)) return;
 
         // Carrega ou cria sessão
@@ -103,7 +110,7 @@ class PluginWhatsappbotBot {
                 break;
 
             case self::STATE_OPEN_TICKET_DESC:
-                $this->handleOpenTicketDesc($from, $body, $session, $fromReal);
+                $this->handleOpenTicketDesc($from, $body, $session, $fromReal, $media);
                 break;
 
             case self::STATE_OPEN_TICKET_NAME:
@@ -217,18 +224,45 @@ class PluginWhatsappbotBot {
     /**
      * Aguarda descrição do problema (passo 1 de abrir chamado)
      */
-    private function handleOpenTicketDesc(string $from, string $body, array $session, ?string $fromReal = null): void {
-        if (strlen($body) < 10) {
+    private function handleOpenTicketDesc(string $from, string $body, array $session, ?string $fromReal = null, ?array $media = null): void {
+        if (!empty($media['tooLarge'])) {
+            $this->wa->send($from, "⚠️ O arquivo enviado é muito grande e não pôde ser anexado (limite: 5MB). Pode continuar descrevendo o problema por texto, ou enviar um arquivo menor.");
+            $media = null;
+        }
+
+        // Uma imagem/documento junto da mensagem dispensa a exigência do
+        // mínimo de caracteres — nesse caso a descrição vira só um
+        // complemento do anexo, não a fonte principal da informação.
+        if (strlen($body) < 10 && empty($media['base64'])) {
             $this->wa->send($from, "⚠️ A descrição é muito curta. Por favor, descreva melhor o problema (mínimo 10 caracteres).");
             return;
         }
+        $description = strlen($body) >= 10
+            ? $body
+            : trim(($body ? "{$body} " : '') . '(anexo enviado — ver imagem/documento em anexo no chamado)');
 
         // JSON_UNESCAPED_UNICODE (dentro de encodeContext): sem isso, acentos
         // são gravados como sequências "\uXXXX" no banco. O GLPI parece
         // remover barras invertidas de strings ao buscar do banco
         // (compatibilidade antiga com magic quotes), o que corrompe esse
         // escape (ex: "ã" vira "u00e3" — "não" aparece como "nu00e3o").
-        $context = ['description' => $body, 'fromReal' => $fromReal];
+        $context = ['description' => $description, 'fromReal' => $fromReal];
+
+        // Envia o anexo pro GLPI já agora, como documento avulso (o chamado
+        // ainda não existe — só é criado depois do nome/e-mail/localização).
+        // Guarda só o ID retornado no contexto: a coluna "context" tem
+        // limite de 64KB e teria que sobreviver por várias trocas de
+        // mensagem até a criação do chamado, então não dá pra guardar o
+        // conteúdo em base64 ali. O vínculo com o chamado de fato acontece
+        // em createTicket(), depois que o chamado é criado.
+        if (!empty($media['base64'])) {
+            $docId = $this->glpiApi->uploadDocument($media['base64'], $media['mimetype'] ?? '', $media['filename'] ?? 'anexo');
+            if ($docId > 0) {
+                $context['attachment_ids'] = [$docId];
+            } else {
+                $this->log("handleOpenTicketDesc: falha ao enviar anexo pro GLPI (from={$from})");
+            }
+        }
 
         $askName = $this->config['ask_name_message'] ?: "👤 Informe seu nome:";
         $this->wa->send($from, $askName);
@@ -321,7 +355,7 @@ class PluginWhatsappbotBot {
             $name        = $context['name'] ?? null;
             $categories  = $this->glpiApi->getCategories();
             $catId       = $this->ai->detectCategory($description, $categories);
-            $this->createTicket($from, $description, 0, $catId, $session, $fromReal, $name);
+            $this->createTicket($from, $description, 0, $catId, $session, $fromReal, $name, $context['attachment_ids'] ?? []);
         }
     }
 
@@ -348,13 +382,13 @@ class PluginWhatsappbotBot {
         $categories = $this->glpiApi->getCategories();
         $catId      = $this->ai->detectCategory($description, $categories);
 
-        $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal, $name);
+        $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal, $name, $context['attachment_ids'] ?? []);
     }
 
     /**
      * Cria o chamado no GLPI e confirma
      */
-    private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null): void {
+    private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null, array $attachmentIds = []): void {
         $userId = (int)($session['users_id'] ?? 0);
         // Prioriza o nome que a pessoa digitou no fluxo (mais confiável) sobre
         // o nome de contato do WhatsApp (pode vir vazio, com apelido, etc.)
@@ -389,6 +423,14 @@ class PluginWhatsappbotBot {
                 'last_ticket_id' => $ticketId
             ]);
             $this->saveMessage($from, 'out', "Chamado #{$ticketId} criado");
+
+            // Vincula ao chamado qualquer anexo (imagem/documento) enviado
+            // durante a descrição — o documento já existe no GLPI desde
+            // handleOpenTicketDesc(), só faltava associar ao chamado que
+            // agora acabou de ser criado.
+            foreach ($attachmentIds as $docId) {
+                $this->glpiApi->linkDocumentToTicket((int)$docId, $ticketId);
+            }
 
             // 1. Confirma para o usuário que abriu o chamado
             $this->wa->send($from,

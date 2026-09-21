@@ -10,6 +10,7 @@ import {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import { Boom }   from '@hapi/boom';
 import axios      from 'axios';
@@ -21,6 +22,11 @@ const SESSION_DIR  = process.env.SESSION_DIR   || './sessions';
 const WEBHOOK_URL  = process.env.GLPI_WEBHOOK_URL;
 const BOT_TOKEN    = process.env.BOT_TOKEN     || '';
 const MAX_RECONNECT = parseInt(process.env.MAX_RECONNECT || '5');
+// Limite de tamanho do anexo (imagem/documento) encaminhado ao GLPI. O
+// arquivo vai embutido em base64 dentro do JSON do webhook — hospedagens
+// compartilhadas costumam ter post_max_size baixo (8MB é comum), e o
+// base64 já adiciona ~33% de overhead sobre o tamanho original.
+const MAX_MEDIA_BYTES = parseInt(process.env.MAX_MEDIA_BYTES || String(5 * 1024 * 1024));
 
 let clientState = {
   sock            : null,
@@ -161,8 +167,12 @@ export async function createBot() {
       const from     = msg.key.remoteJid || '';
       const body     = extractMessageText(msg);
       const pushName = msg.pushName || '';
+      const media    = await extractMedia(msg);
 
-      if (!body) continue;
+      // Antes exigia texto sempre — uma imagem/documento sem legenda vinha
+      // com body vazio e era descartado silenciosamente. Agora só descarta
+      // se não tiver nem texto nem anexo.
+      if (!body && !media) continue;
 
       // Quando o contato usa a privacidade "@lid" do WhatsApp, o remoteJid
       // é um identificador pseudônimo, não o número de telefone real.
@@ -175,10 +185,10 @@ export async function createBot() {
         msg.key.participantAlt ||
         null;
 
-      logger.info({ from, fromReal, body: body.substring(0, 80) }, 'Mensagem recebida');
+      logger.info({ from, fromReal, body: body.substring(0, 80), hasMedia: !!media }, 'Mensagem recebida');
 
       // Encaminha para o GLPI
-      await forwardToGlpi({ from, fromReal, body, pushName, msgId: msg.key.id });
+      await forwardToGlpi({ from, fromReal, body, pushName, msgId: msg.key.id, media });
     }
   });
 
@@ -206,6 +216,39 @@ function extractMessageText(msg) {
     m.templateButtonReplyMessage?.selectedId ||
     ''
   );
+}
+
+/**
+ * Baixa a mídia (imagem ou documento) de uma mensagem, se houver, e devolve
+ * em base64 pronta pra ir dentro do JSON do webhook. Retorna null se a
+ * mensagem não tem mídia, se o download falhar, ou se o arquivo passar do
+ * limite configurado (MAX_MEDIA_BYTES) — nesses casos o texto/legenda ainda
+ * é processado normalmente, só o anexo em si é descartado.
+ */
+async function extractMedia(msg) {
+  const m = msg.message;
+  if (!m) return null;
+
+  const imageMsg    = m.imageMessage;
+  const documentMsg = m.documentMessage;
+  if (!imageMsg && !documentMsg) return null;
+
+  try {
+    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+    if (buffer.length > MAX_MEDIA_BYTES) {
+      logger.warn({ size: buffer.length, limit: MAX_MEDIA_BYTES }, 'Anexo maior que o limite — descartado');
+      return { tooLarge: true };
+    }
+
+    const mimetype = imageMsg?.mimetype || documentMsg?.mimetype || 'application/octet-stream';
+    const filename = documentMsg?.fileName
+      || `imagem_${msg.key.id}.${(mimetype.split('/')[1] || 'jpg').split(';')[0]}`;
+
+    return { base64: buffer.toString('base64'), mimetype, filename };
+  } catch (err) {
+    logger.error({ err }, 'Erro ao baixar mídia do WhatsApp');
+    return null;
+  }
 }
 
 /**
