@@ -632,8 +632,8 @@ class PluginWhatsappbotBot {
         $session  = $this->getSessionByTicketId($ticketId);
         if (!$session) return;
 
-        $from    = $session['wa_number'];
-        $content = strip_tags($followup->fields['content'] ?? '');
+        $from = $session['wa_number'];
+        $content = $this->formatFollowupContent($followup->fields['content'] ?? '');
         if (empty($content)) return;
 
         $this->wa->send($from,
@@ -757,6 +757,29 @@ class PluginWhatsappbotBot {
         $welcome   = $this->config['welcome_message'] ?? "Olá! Como posso ajudar?\n\n*1* — Abrir chamado\n*2* — Consultar andamento\n*3* — Falar com humano";
         $this->wa->send($from, $welcome);
         $this->saveMessage($from, 'out', $welcome);
+    }
+
+    /**
+     * Converte o HTML do editor de texto do GLPI (acompanhamento de
+     * chamado) em texto simples pro WhatsApp.
+     *
+     * O editor grava o conteúdo com as tags já codificadas como entidades
+     * HTML numéricas (ex: "&#60;p&#62;" em vez de "<p>" literal) — por
+     * isso strip_tags() sozinho não fazia nada: ele só reconhece tags
+     * literais, então "&#60;p data-start=..." passava direto pro usuário
+     * como texto quebrado. html_entity_decode() primeiro transforma essas
+     * entidades de volta em tags de verdade, aí sim strip_tags() consegue
+     * removê-las. Um segundo decode depois pega entidades de texto que
+     * sobraram (ex: "&#8217;" → "'"), e o preg_replace no final evita um
+     * bloco de linhas em branco enorme (cada tag de bloco removida como
+     * <p> vira uma quebra de linha).
+     */
+    private function formatFollowupContent(string $raw): string {
+        $content = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $content = strip_tags($content);
+        $content = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $content = preg_replace("/\n{3,}/", "\n\n", $content);
+        return trim($content);
     }
 
     private function summarizeTitle(string $description): string {

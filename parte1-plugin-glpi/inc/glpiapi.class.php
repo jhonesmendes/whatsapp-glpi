@@ -138,8 +138,21 @@ class PluginWhatsappbotGlpiApi {
             'order' => 'DESC',
             'range' => '0-4',
         ]);
+        $followups = $followups ?: [];
 
-        $ticket['followups'] = $followups ?: [];
+        // O editor de texto do GLPI grava o conteúdo com as tags HTML já
+        // codificadas como entidades numéricas (ex: "&#60;p&#62;" em vez de
+        // "<p>" literal) — sem isso, quem consome esses dados (o prompt da
+        // IA ao formatar a consulta de chamado, por exemplo) recebe as
+        // entidades cruas, aparecendo como texto quebrado pro usuário.
+        foreach ($followups as &$f) {
+            if (isset($f['content'])) {
+                $f['content'] = $this->stripHtml($f['content']);
+            }
+        }
+        unset($f);
+
+        $ticket['followups'] = $followups;
         $this->killSession();
         return $ticket;
     }
@@ -566,5 +579,20 @@ class PluginWhatsappbotGlpiApi {
     private function log(string $msg): void {
         $line = date('Y-m-d H:i:s') . ' API ' . $msg . PHP_EOL;
         file_put_contents($this->logFile, $line, FILE_APPEND | LOCK_EX);
+    }
+
+    /**
+     * Converte HTML do editor de texto do GLPI em texto simples. As tags
+     * vêm codificadas como entidades numéricas (ex: "&#60;p&#62;" em vez
+     * de "<p>"), então precisa decodificar duas vezes: uma antes do
+     * strip_tags() (pra virar tag de verdade e ser removida) e outra
+     * depois (pra entidades de texto que sobraram, tipo "&#8217;" → "'").
+     */
+    private function stripHtml(string $raw): string {
+        $content = html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $content = strip_tags($content);
+        $content = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $content = preg_replace("/\n{3,}/", "\n\n", $content);
+        return trim($content);
     }
 }
