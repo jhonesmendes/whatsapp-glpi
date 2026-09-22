@@ -387,12 +387,11 @@ class PluginWhatsappbotBot {
             $msg = "{$header}\n\n";
             foreach ($locations as $i => $loc) {
                 $num = $i + 1;
-                // Negrito na linha inteira, não só no número: alguns clientes
-                // de WhatsApp mostram um número isolado entre asteriscos
-                // (ex: "*1*") com uma cor de link em vez de negrito de
-                // verdade — envolvendo a linha toda o destaque aparece
-                // sempre, independente desse comportamento do cliente.
-                $msg .= "*{$num} — {$loc['name']}*\n";
+                // Sem negrito de propósito: tentativas de destacar o número
+                // (isolado ou a linha inteira) renderizavam estranho em
+                // alguns clientes de WhatsApp. Texto simples fica mais
+                // consistente entre clientes.
+                $msg .= "{$num} — {$loc['name']}\n";
             }
             // Guarda só o essencial (id/name) — o resto que a API do GLPI
             // devolve (endereço, lat/long, cache internos, etc.) não é
