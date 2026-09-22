@@ -56,6 +56,13 @@ PluginWhatsappbotConfig::renderStyles();
             placeholder="ID do grupo (0 = sem grupo)">
         </div>
         <div class="wa-field">
+          <label>Solicitante padrão (quando não achar conta pelo e-mail/telefone)</label>
+          <input type="text" name="default_requester_id"
+            value="<?= (int)($config['default_requester_id'] ?? 0) ?>"
+            placeholder="ID do usuário GLPI (0 = deixa sem solicitante/anônimo)">
+          <span class="wa-hint">Usado no chamado sempre que o e-mail/telefone informado não corresponder a nenhum usuário cadastrado no GLPI — evita chamados sem solicitante ("Anônimo")</span>
+        </div>
+        <div class="wa-field">
           <label>Se usuário não for encontrado pelo número</label>
           <select name="unknown_user_action">
             <option value="visitor" <?= ($config['unknown_user_action'] ?? '') === 'visitor' ? 'selected' : '' ?>>Criar como visitante</option>

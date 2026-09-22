@@ -452,6 +452,13 @@ class PluginWhatsappbotBot {
      */
     private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null, array $attachmentIds = []): void {
         $userId = (int)($session['users_id'] ?? 0);
+        // Sem conta vinculada (e-mail/telefone não bateram com ninguém no
+        // GLPI): usa o solicitante padrão configurado, se houver — evita
+        // chamados sem nenhum solicitante ("Anônimo"), que quebravam
+        // integrações externas que esperam sempre ter um usuário no chamado.
+        if ($userId <= 0) {
+            $userId = (int)($this->config['default_requester_id'] ?? 0);
+        }
         // Prioriza o nome que a pessoa digitou no fluxo (mais confiável) sobre
         // o nome de contato do WhatsApp (pode vir vazio, com apelido, etc.)
         $name   = trim($requesterName ?? '') ?: (trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp');

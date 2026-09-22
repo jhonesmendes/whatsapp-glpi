@@ -51,6 +51,7 @@ class PluginWhatsappbotConfig extends CommonGLPI {
             'glpi_user_token'      => fn($v) => trim($v),
             'default_category_id'  => fn($v) => (int)$v,
             'default_group_id'     => fn($v) => (int)$v,
+            'default_requester_id' => fn($v) => (int)$v,
             'unknown_user_action'  => fn($v) => $v,
             'post_resolve_action'  => fn($v) => $v,
             'tech_notify_numbers'  => fn($v) => trim($v),

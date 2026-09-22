@@ -121,6 +121,7 @@ function plugin_whatsappbot_install() {
             `glpi_user_token`       varchar(255) DEFAULT '',
             `default_category_id`   int          DEFAULT 0,
             `default_group_id`      int          DEFAULT 0,
+            `default_requester_id`  int          DEFAULT 0,
             `unknown_user_action`   varchar(20)  DEFAULT 'visitor',
             `post_resolve_action`   varchar(50)  DEFAULT 'ask_rating',
             `tech_notify_numbers`   text,
@@ -157,6 +158,7 @@ function plugin_whatsappbot_install() {
             'menu_reminder_message'   => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message` text AFTER `ask_location_message`",
             'menu_reminder_message_2' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message_2` text AFTER `menu_reminder_message`",
             'menu_blocked_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_blocked_message` text AFTER `menu_reminder_message_2`",
+            'default_requester_id'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `default_requester_id` int DEFAULT 0 AFTER `default_group_id`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
