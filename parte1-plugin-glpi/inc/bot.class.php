@@ -15,6 +15,7 @@ class PluginWhatsappbotBot {
     const STATE_MENU                 = 'menu';
     const STATE_MENU_BLOCKED         = 'menu_blocked';
     const STATE_OPEN_TICKET_DESC     = 'open_ticket_desc';
+    const STATE_OPEN_TICKET_ATTACH   = 'open_ticket_attach';
     const STATE_OPEN_TICKET_NAME     = 'open_ticket_name';
     const STATE_OPEN_TICKET_EMAIL    = 'open_ticket_email';
     const STATE_OPEN_TICKET_LOCATION = 'open_ticket_location';
@@ -118,6 +119,10 @@ class PluginWhatsappbotBot {
 
             case self::STATE_OPEN_TICKET_DESC:
                 $this->handleOpenTicketDesc($from, $body, $session, $fromReal, $media);
+                break;
+
+            case self::STATE_OPEN_TICKET_ATTACH:
+                $this->handleOpenTicketAttach($from, $body, $session, $media);
                 break;
 
             case self::STATE_OPEN_TICKET_NAME:
@@ -255,22 +260,65 @@ class PluginWhatsappbotBot {
         // escape (ex: "ã" vira "u00e3" — "não" aparece como "nu00e3o").
         $context = ['description' => $description, 'fromReal' => $fromReal];
 
-        // Envia o anexo pro GLPI já agora, como documento avulso (o chamado
-        // ainda não existe — só é criado depois do nome/e-mail/localização).
-        // Guarda só o ID retornado no contexto: a coluna "context" tem
-        // limite de 64KB e teria que sobreviver por várias trocas de
-        // mensagem até a criação do chamado, então não dá pra guardar o
-        // conteúdo em base64 ali. O vínculo com o chamado de fato acontece
-        // em createTicket(), depois que o chamado é criado.
+        // Se a imagem/documento já veio junto com a descrição, não tem
+        // motivo pra perguntar de novo se a pessoa quer anexar algo — já
+        // anexou. Só pergunta quando ninguém mandou nada ainda.
         if (!empty($media['base64'])) {
-            $docId = $this->glpiApi->uploadDocument($media['base64'], $media['mimetype'] ?? '', $media['filename'] ?? 'anexo');
-            if ($docId > 0) {
-                $context['attachment_ids'] = [$docId];
-            } else {
-                $this->log("handleOpenTicketDesc: falha ao enviar anexo pro GLPI (from={$from})");
-            }
+            $this->attachMediaToContext($context, $media, $from);
+            $this->askNameAndProceed($from, $context);
+            return;
         }
 
+        $askAttachment = $this->config['ask_attachment_message']
+            ?: "📎 Quer anexar uma foto ou documento relacionado ao problema? Envie agora, ou digite *não* para continuar sem anexo.";
+        $this->wa->send($from, $askAttachment);
+        $this->updateSession($from, [
+            'state'   => self::STATE_OPEN_TICKET_ATTACH,
+            'context' => $this->encodeContext($context)
+        ]);
+    }
+
+    /**
+     * Aguarda a resposta sobre anexar imagem/documento (passo opcional,
+     * só ocorre quando a descrição foi mandada sem nenhuma mídia junto).
+     * Qualquer texto que não seja um anexo é tratado como "pular" — não
+     * exige uma palavra exata (ex: "não"), já que travar aqui esperando
+     * uma resposta específica só frustraria quem só quer seguir andando.
+     */
+    private function handleOpenTicketAttach(string $from, string $body, array $session, ?array $media = null): void {
+        $context = $this->decodeContext($session['context'] ?? null);
+
+        if (!empty($media['tooLarge'])) {
+            $this->wa->send($from, "⚠️ O arquivo enviado é muito grande (limite: 5MB) e não foi anexado. Seguindo sem anexo.");
+        } elseif (!empty($media['base64'])) {
+            $this->attachMediaToContext($context, $media, $from);
+        }
+
+        $this->askNameAndProceed($from, $context);
+    }
+
+    /**
+     * Envia o arquivo (imagem/documento) pro GLPI como documento avulso e
+     * guarda só o ID retornado no contexto — a coluna "context" tem
+     * limite de 64KB e teria que sobreviver por várias trocas de mensagem
+     * até a criação do chamado, então não dá pra guardar o conteúdo em
+     * base64 ali. O vínculo com o chamado de fato acontece em
+     * createTicket(), depois que o chamado é criado.
+     */
+    private function attachMediaToContext(array &$context, array $media, string $from): void {
+        $docId = $this->glpiApi->uploadDocument($media['base64'], $media['mimetype'] ?? '', $media['filename'] ?? 'anexo');
+        if ($docId > 0) {
+            $context['attachment_ids'] = array_merge($context['attachment_ids'] ?? [], [$docId]);
+        } else {
+            $this->log("attachMediaToContext: falha ao enviar anexo pro GLPI (from={$from})");
+        }
+    }
+
+    /**
+     * Pede o nome do solicitante (passo seguinte, depois de descrição +
+     * anexo opcional) e avança o estado da conversa.
+     */
+    private function askNameAndProceed(string $from, array $context): void {
         $askName = $this->config['ask_name_message'] ?: "👤 Informe seu nome:";
         $this->wa->send($from, $askName);
         $this->updateSession($from, [

@@ -35,6 +35,11 @@ PluginWhatsappbotConfig::renderStyles();
           <span class="wa-hint">Enviada logo após o usuário escolher "Abrir chamado"</span>
         </div>
         <div class="wa-field">
+          <label>Mensagem perguntando se quer anexar foto/documento</label>
+          <textarea name="ask_attachment_message" style="min-height:70px"><?= htmlspecialchars($config['ask_attachment_message'] ?? '') ?></textarea>
+          <span class="wa-hint">Enviada depois da descrição, só quando a pessoa não mandou nenhuma imagem/documento junto com ela — qualquer resposta que não seja um anexo é tratada como "não quero anexar" e segue o fluxo normalmente</span>
+        </div>
+        <div class="wa-field">
           <label>Mensagem pedindo o nome de quem está solicitando</label>
           <textarea name="ask_name_message" style="min-height:70px"><?= htmlspecialchars($config['ask_name_message'] ?? '') ?></textarea>
           <span class="wa-hint">Enviada logo após a descrição — a resposta é obrigatória e é usada como "Solicitante" no chamado, em vez do nome de contato do WhatsApp</span>
