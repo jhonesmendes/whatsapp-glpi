@@ -12,6 +12,37 @@ include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/whatsapp.class.php');
 
 global $DB;
 
+/**
+ * Registra o canal (bot/atendente) do ÚLTIMO chamado da sessão informada.
+ * Guardado por chamado, não por sessão — sem isso, telas externas (ex:
+ * dashboard de acompanhamento) só conseguem ver o status do chamado mais
+ * recente de cada número, perdendo o histórico de chamados anteriores.
+ */
+function wabot_sync_ticket_channel($DB, string $waNumber, int $isHuman): void {
+    $session = $DB->request([
+        'FROM'  => 'glpi_plugin_whatsappbot_sessions',
+        'WHERE' => ['wa_number' => $waNumber],
+        'LIMIT' => 1
+    ])->current();
+
+    $ticketId = (int)($session['last_ticket_id'] ?? 0);
+    if ($ticketId <= 0) return;
+
+    $exists = $DB->request([
+        'FROM'  => 'glpi_plugin_whatsappbot_ticket_channel',
+        'WHERE' => ['tickets_id' => $ticketId],
+        'LIMIT' => 1
+    ])->current();
+
+    $fields = ['wa_number' => $waNumber, 'is_human' => $isHuman, 'date_mod' => date('Y-m-d H:i:s')];
+    if ($exists) {
+        $DB->update('glpi_plugin_whatsappbot_ticket_channel', $fields, ['tickets_id' => $ticketId]);
+    } else {
+        $fields['tickets_id'] = $ticketId;
+        $DB->insert('glpi_plugin_whatsappbot_ticket_channel', $fields);
+    }
+}
+
 // Ação: assumir conversa como humano
 //
 // OBS: wa_number pode ser um JID completo (ex: "27762752512242@lid",
@@ -23,6 +54,7 @@ if (!empty($_GET['take'])) {
         'is_human'    => 1,
         'human_agent' => Session::getLoginUserID(true)
     ], ['wa_number' => $wa_number]);
+    wabot_sync_ticket_channel($DB, $wa_number, 1);
     Session::addMessageAfterRedirect("Conversa assumida. Responda pelo seu WhatsApp.", true, INFO);
     Html::back();
     exit;
@@ -31,6 +63,7 @@ if (!empty($_GET['take'])) {
 // Ação: devolver ao bot (finaliza o atendimento humano)
 if (!empty($_GET['release'])) {
     $wa_number = $_GET['release'];
+    wabot_sync_ticket_channel($DB, $wa_number, 0);
     $DB->update('glpi_plugin_whatsappbot_sessions', [
         'is_human'    => 0,
         'human_agent' => '',

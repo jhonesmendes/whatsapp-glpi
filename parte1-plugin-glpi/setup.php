@@ -235,6 +235,27 @@ function plugin_whatsappbot_install() {
         $DB->queryOrDie($query, "Erro ao criar tabela de mensagens");
     }
 
+    // Canal (bot/atendente) de cada chamado — separado da tabela de sessões
+    // de propósito: "last_ticket_id" na sessão só guarda o chamado MAIS
+    // RECENTE de cada número, então quando a mesma pessoa abre um segundo
+    // chamado, o status de atendimento do primeiro chamado se perdia (só
+    // dava pra saber o status do último). Um registro por chamado resolve
+    // isso — usado por telas externas (ex: dashboard de acompanhamento)
+    // que precisam saber se um chamado específico ainda está com o bot ou
+    // já foi assumido por um atendente humano.
+    if (!$DB->tableExists('glpi_plugin_whatsappbot_ticket_channel')) {
+        $query = "CREATE TABLE `glpi_plugin_whatsappbot_ticket_channel` (
+            `id`         int {$default_key_sign} NOT NULL AUTO_INCREMENT,
+            `tickets_id` int          NOT NULL,
+            `wa_number`  varchar(50)  NOT NULL,
+            `is_human`   tinyint(1)   DEFAULT 0,
+            `date_mod`   datetime     DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `tickets_id` (`tickets_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation}";
+        $DB->queryOrDie($query, "Erro ao criar tabela de canal do chamado");
+    }
+
     return true;
 }
 
@@ -246,7 +267,8 @@ function plugin_whatsappbot_uninstall() {
     foreach ([
         'glpi_plugin_whatsappbot_configs',
         'glpi_plugin_whatsappbot_sessions',
-        'glpi_plugin_whatsappbot_messages'
+        'glpi_plugin_whatsappbot_messages',
+        'glpi_plugin_whatsappbot_ticket_channel'
     ] as $table) {
         $DB->queryOrDie("DROP TABLE IF EXISTS `$table`");
     }

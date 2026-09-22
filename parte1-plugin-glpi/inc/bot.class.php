@@ -96,6 +96,9 @@ class PluginWhatsappbotBot {
         // sem conseguir voltar ao atendimento automático sozinho caso
         // nenhum técnico assumisse a conversa pelo painel.
         if (in_array(strtolower($body), ['cancelar', 'menu', '0', 'voltar'])) {
+            if (!empty($session['is_human']) && !empty($session['last_ticket_id'])) {
+                $this->setTicketChannel((int)$session['last_ticket_id'], $from, 0);
+            }
             $this->sendMenu($from, $waName);
             $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null, 'is_human' => 0]);
             return;
@@ -481,6 +484,7 @@ class PluginWhatsappbotBot {
                 'context'        => null,
                 'last_ticket_id' => $ticketId
             ]);
+            $this->setTicketChannel($ticketId, $from, 0);
             $this->saveMessage($from, 'out', "Chamado #{$ticketId} criado");
 
             // Vincula ao chamado qualquer anexo (imagem/documento) enviado
@@ -632,8 +636,10 @@ class PluginWhatsappbotBot {
             'is_human' => 1
         ]);
 
-        // Notifica no GLPI via comentário interno (se tiver ticket ativo)
+        // Notifica no GLPI via comentário interno e marca o canal do
+        // chamado como "atendente" (se tiver ticket ativo)
         if (!empty($session['last_ticket_id'])) {
+            $this->setTicketChannel((int)$session['last_ticket_id'], $from, 1);
             $this->glpiApi->addFollowup(
                 (int)$session['last_ticket_id'],
                 "⚠️ Usuário WhatsApp ({$from}) solicitou atendimento humano.",
@@ -926,6 +932,9 @@ class PluginWhatsappbotBot {
         ]);
 
         foreach ($stale as $s) {
+            if (!empty($s['is_human']) && !empty($s['last_ticket_id'])) {
+                $this->setTicketChannel((int)$s['last_ticket_id'], $s['wa_number'], 0);
+            }
             $this->wa->send($s['wa_number'],
                 "⏰ Sua conversa foi encerrada por inatividade.\n\n_Digite *menu* para começar de novo_"
             );
@@ -989,6 +998,39 @@ class PluginWhatsappbotBot {
         global $DB;
         $fields['date_last_msg'] = date('Y-m-d H:i:s');
         $DB->update('glpi_plugin_whatsappbot_sessions', $fields, ['wa_number' => $from]);
+    }
+
+    /**
+     * Registra se um chamado específico está com o bot ou com um atendente
+     * humano. Guardado por chamado (não por sessão): a sessão só lembra o
+     * "last_ticket_id" mais recente, então sem isso, assim que a mesma
+     * pessoa abrisse um segundo chamado, o status de atendimento do
+     * primeiro se perdia — telas externas (dashboard de acompanhamento)
+     * que consultam por chamado específico sempre viam o status errado
+     * (ou nenhum) pra qualquer chamado que não fosse o último.
+     */
+    private function setTicketChannel(int $ticketId, string $waNumber, int $isHuman): void {
+        global $DB;
+        if ($ticketId <= 0) return;
+
+        $exists = $DB->request([
+            'FROM'  => 'glpi_plugin_whatsappbot_ticket_channel',
+            'WHERE' => ['tickets_id' => $ticketId],
+            'LIMIT' => 1
+        ])->current();
+
+        $fields = [
+            'wa_number' => $waNumber,
+            'is_human'  => $isHuman,
+            'date_mod'  => date('Y-m-d H:i:s'),
+        ];
+
+        if ($exists) {
+            $DB->update('glpi_plugin_whatsappbot_ticket_channel', $fields, ['tickets_id' => $ticketId]);
+        } else {
+            $fields['tickets_id'] = $ticketId;
+            $DB->insert('glpi_plugin_whatsappbot_ticket_channel', $fields);
+        }
     }
 
     private function getSessionByTicketId(int $ticketId): ?array {
