@@ -81,6 +81,9 @@ class PluginWhatsappbotConfig extends CommonGLPI {
         if (array_key_exists('_has_is_active', $data)) {
             $fields['is_active'] = isset($data['is_active']) ? 1 : 0;
         }
+        if (array_key_exists('_has_agent_mode', $data)) {
+            $fields['agent_mode'] = isset($data['agent_mode']) ? 1 : 0;
+        }
         $fields['date_mod'] = date('Y-m-d H:i:s');
 
         if ($config) {

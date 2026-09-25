@@ -22,6 +22,16 @@ class PluginWhatsappbotBot {
     const STATE_CONSULT_TICKET       = 'consult_ticket';
     const STATE_HUMAN                = 'human';
     const STATE_RATING               = 'rating';
+    const STATE_AGENT                = 'agent';
+
+    // Limite de rodadas IA↔ferramenta por mensagem recebida, no modo
+    // agente — evita loop infinito/custo descontrolado se a IA insistir
+    // em chamar ferramentas sem nunca dar uma resposta final ao usuário.
+    const AGENT_MAX_TOOL_ROUNDS = 4;
+    // Quantas mensagens (user+assistant) do histórico da conversa ficam
+    // guardadas — mais que isso e a coluna "context" (limite de 64KB)
+    // e o custo de tokens por mensagem cresceriam sem necessidade.
+    const AGENT_HISTORY_LIMIT = 20;
 
     public function __construct() {
         $this->config  = PluginWhatsappbotConfig::getConfig();
@@ -99,14 +109,35 @@ class PluginWhatsappbotBot {
             if (!empty($session['is_human']) && !empty($session['last_ticket_id'])) {
                 $this->setTicketChannel((int)$session['last_ticket_id'], $from, 0);
             }
-            $this->sendMenu($from, $waName);
-            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null, 'is_human' => 0]);
+            if (!empty($this->config['agent_mode'])) {
+                // Modo agente: "menu" funciona como um reset de conversa
+                // (limpa o histórico) — continua valendo mesmo aqui, como
+                // uma saída de emergência confiável caso a IA trave ou
+                // entenda algo errado, mas sem voltar pro menu numerado
+                // rígido do fluxo antigo.
+                $this->wa->send($from, "🔄 Conversa reiniciada. Pode me dizer como posso ajudar.");
+                $this->updateSession($from, ['state' => self::STATE_AGENT, 'context' => null, 'is_human' => 0]);
+            } else {
+                $this->sendMenu($from, $waName);
+                $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null, 'is_human' => 0]);
+            }
             return;
         }
 
         // Se está em atendimento humano, não processa
         if ($session['is_human']) {
             // Apenas registra — humano responde manualmente via painel
+            return;
+        }
+
+        // Modo agente: a IA decide dinamicamente o que perguntar/fazer a
+        // cada mensagem (via function calling), em vez de seguir a
+        // máquina de estados fixa abaixo. Fica atrás de uma configuração
+        // (desligado por padrão) por ser uma mudança grande no motor de
+        // conversa de um bot já em produção — dá pra testar e comparar
+        // antes de trocar de vez.
+        if (!empty($this->config['agent_mode'])) {
+            $this->handleAgentTurn($from, $body, $session, $fromReal, $media);
             return;
         }
 
@@ -448,9 +479,44 @@ class PluginWhatsappbotBot {
     }
 
     /**
-     * Cria o chamado no GLPI e confirma
+     * Cria o chamado no GLPI e confirma (fluxo antigo, máquina de estados).
+     * A criação de fato (GLPI + anexos + notificação de técnicos) fica em
+     * createTicketRecord(), compartilhada com o modo agente — só a
+     * confirmação enviada ao usuário é fixa aqui; no modo agente, quem
+     * formula a confirmação é a própria IA.
      */
     private function createTicket(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null, array $attachmentIds = []): void {
+        $ticket = $this->createTicketRecord($from, $description, $locationsId, $catId, $session, $fromReal, $requesterName, $attachmentIds);
+
+        if ($ticket) {
+            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
+            $this->wa->send($from,
+                "✅ *Chamado aberto com sucesso!*\n\n" .
+                "🔢 Número: #{$ticket['id']}\n" .
+                "📝 Nome: {$ticket['requester_name']}\n" .
+                "⏳ Status: Chamado Aberto\n\n" .
+                "Você receberá atualizações aqui quando houver novidades.\n\n" .
+                "_Responda *menu* a qualquer momento para voltar ao início_"
+            );
+        } else {
+            $this->wa->send($from,
+                "❌ Não foi possível abrir o chamado no momento. Tente novamente ou escolha a *opção 3* para falar com um técnico."
+            );
+            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
+        }
+    }
+
+    /**
+     * Cria o chamado de fato no GLPI: monta o conteúdo, resolve
+     * solicitante/categoria/localização, vincula anexos e notifica
+     * técnicos. Usada tanto pelo fluxo antigo (createTicket, acima)
+     * quanto pela ferramenta "create_ticket" do modo agente — nenhuma das
+     * duas duplica essa lógica.
+     *
+     * Retorna ['id' => int, 'requester_name' => string] em caso de
+     * sucesso, ou null se a API do GLPI falhar.
+     */
+    private function createTicketRecord(string $from, string $description, int $locationsId, int $catId, array $session, ?string $fromReal = null, ?string $requesterName = null, array $attachmentIds = []): ?array {
         $userId = (int)($session['users_id'] ?? 0);
         // Sem conta vinculada (e-mail/telefone não bateram com ninguém no
         // GLPI): usa o solicitante padrão configurado, se houver — evita
@@ -461,7 +527,7 @@ class PluginWhatsappbotBot {
         }
         // Prioriza o nome que a pessoa digitou no fluxo (mais confiável) sobre
         // o nome de contato do WhatsApp (pode vir vazio, com apelido, etc.)
-        $name   = trim($requesterName ?? '') ?: (trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp');
+        $name = trim($requesterName ?? '') ?: (trim($session['wa_name'] ?? '') ?: 'Contato WhatsApp');
 
         // Mostra o número real quando o Baileys conseguiu resolvê-lo (contatos
         // com privacidade "@lid" só expõem um ID pseudônimo, não o número).
@@ -483,45 +549,331 @@ class PluginWhatsappbotBot {
         }
 
         $result = $this->glpiApi->createTicket($ticketData);
+        if (!$result || !isset($result['id'])) {
+            return null;
+        }
 
-        if ($result && isset($result['id'])) {
-            $ticketId = $result['id'];
-            $this->updateSession($from, [
-                'state'          => self::STATE_MENU,
-                'context'        => null,
-                'last_ticket_id' => $ticketId
-            ]);
-            $this->setTicketChannel($ticketId, $from, 0);
-            $this->saveMessage($from, 'out', "Chamado #{$ticketId} criado");
+        $ticketId = (int)$result['id'];
+        $this->updateSession($from, ['last_ticket_id' => $ticketId, 'users_id' => $userId]);
+        $this->setTicketChannel($ticketId, $from, 0);
+        $this->saveMessage($from, 'out', "Chamado #{$ticketId} criado");
 
-            // Vincula ao chamado qualquer anexo (imagem/documento) enviado
-            // durante a descrição — o documento já existe no GLPI desde
-            // handleOpenTicketDesc(), só faltava associar ao chamado que
-            // agora acabou de ser criado.
-            foreach ($attachmentIds as $docId) {
-                $this->glpiApi->linkDocumentToTicket((int)$docId, $ticketId);
+        // Vincula ao chamado qualquer anexo (imagem/documento) enviado
+        // durante a descrição — o documento já existe no GLPI desde antes,
+        // só faltava associar ao chamado que agora acabou de ser criado.
+        foreach ($attachmentIds as $docId) {
+            $this->glpiApi->linkDocumentToTicket((int)$docId, $ticketId);
+        }
+
+        // Notifica técnicos do grupo configurado (a API do GLPI não
+        // devolve o campo "name" na resposta do POST /Ticket — usamos o
+        // mesmo título que enviamos)
+        $this->notifyTechnicians($ticketId, $ticketData['name'], $description, $session);
+
+        return ['id' => $ticketId, 'requester_name' => $name];
+    }
+
+    // ---------------------------------------------------------------
+    // Modo agente — IA com function calling decide o fluxo dinamicamente
+    // ---------------------------------------------------------------
+
+    /**
+     * Processa uma mensagem inteira no modo agente: carrega o histórico da
+     * conversa, chama a IA com as ferramentas disponíveis, executa
+     * qualquer ação que ela decidir chamar (abrir chamado, consultar,
+     * transferir pra humano...) e manda a resposta final formulada pela
+     * própria IA — em vez de percorrer uma máquina de estados fixa.
+     */
+    private function handleAgentTurn(string $from, string $body, array $session, ?string $fromReal, ?array $media): void {
+        $context = $this->decodeContext($session['context'] ?? null);
+        $history = $context['history'] ?? [];
+
+        // Anexo (imagem/documento) enviado nesta mensagem: sobe pro GLPI
+        // já como documento avulso e guarda o ID — igual ao fluxo antigo,
+        // só que aqui pode chegar em qualquer momento da conversa, não só
+        // num passo fixo. O create_ticket usa esses IDs quando chamado.
+        if (!empty($media['tooLarge'])) {
+            $body = trim($body . "\n\n[o usuário tentou enviar um arquivo, mas era grande demais (limite 5MB) e não foi anexado]");
+        } elseif (!empty($media['base64'])) {
+            $docId = $this->glpiApi->uploadDocument($media['base64'], $media['mimetype'] ?? '', $media['filename'] ?? 'anexo');
+            if ($docId > 0) {
+                $context['attachment_ids'] = array_merge($context['attachment_ids'] ?? [], [$docId]);
+                $body = trim($body) !== '' ? $body : '[o usuário enviou uma imagem/documento em anexo ao problema]';
+            } else {
+                $this->log("handleAgentTurn: falha ao enviar anexo pro GLPI (from={$from})");
+            }
+        }
+
+        $history[] = ['role' => 'user', 'content' => $body];
+
+        $messages = array_merge(
+            [['role' => 'system', 'content' => $this->buildAgentSystemPrompt($session)]],
+            array_slice($history, -self::AGENT_HISTORY_LIMIT)
+        );
+
+        $tools = $this->agentToolDefinitions();
+        $finalReply = null;
+
+        for ($round = 0; $round < self::AGENT_MAX_TOOL_ROUNDS; $round++) {
+            $result = $this->ai->chatWithTools($messages, $tools);
+            if (!$result) break;
+
+            if (!empty($result['tool_calls'])) {
+                $messages[] = [
+                    'role'       => 'assistant',
+                    'content'    => $result['content'],
+                    'tool_calls' => $result['tool_calls'],
+                ];
+
+                foreach ($result['tool_calls'] as $call) {
+                    $toolResult = $this->executeAgentTool($call, $from, $fromReal, $session, $context);
+                    $messages[] = [
+                        'role'         => 'tool',
+                        'tool_call_id' => $call['id'] ?? '',
+                        'content'      => json_encode($toolResult, JSON_UNESCAPED_UNICODE),
+                    ];
+                }
+                continue; // manda os resultados de volta pra IA formular a resposta final
             }
 
-            // 1. Confirma para o usuário que abriu o chamado
-            $this->wa->send($from,
-                "✅ *Chamado aberto com sucesso!*\n\n" .
-                "🔢 Número: *#{$ticketId}*\n" .
-                "📝 Nome: {$name}\n" .
-                "⏳ Status: Chamado Aberto\n\n" .
-                "Você receberá atualizações aqui quando houver novidades.\n\n" .
-                "_Responda *menu* a qualquer momento para voltar ao início_"
-            );
+            $finalReply = trim((string)($result['content'] ?? ''));
+            break;
+        }
 
-            // 2. Notifica técnicos do grupo configurado
-            // (a API do GLPI não devolve o campo "name" na resposta do
-            // POST /Ticket — usamos o mesmo título que enviamos)
-            $this->notifyTechnicians($ticketId, $ticketData['name'], $description, $session);
+        // IA indisponível, ou insistiu em chamar ferramentas sem nunca dar
+        // uma resposta final — não deixa o usuário sem retorno nenhum.
+        if ($finalReply === null || $finalReply === '') {
+            $finalReply = "Desculpe, não consegui processar sua mensagem agora. Pode tentar de novo? Se preferir, digite *3* para falar com um atendente.";
+            $this->log("handleAgentTurn: sem resposta final da IA (from={$from})");
+        }
 
-        } else {
-            $this->wa->send($from,
-                "❌ Não foi possível abrir o chamado no momento. Tente novamente ou escolha a *opção 3* para falar com um técnico."
-            );
-            $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null]);
+        $this->wa->send($from, $finalReply);
+        $this->saveMessage($from, 'out', $finalReply);
+
+        // Persiste só o histórico em texto simples (user/assistant) — não
+        // guarda as chamadas de ferramenta nem os resultados delas, pra
+        // não estourar o limite de 64KB da coluna "context" nem inflar o
+        // custo de tokens à toa nas próximas mensagens.
+        $history[] = ['role' => 'assistant', 'content' => $finalReply];
+        $context['history'] = array_slice($history, -self::AGENT_HISTORY_LIMIT);
+
+        $this->updateSession($from, ['state' => self::STATE_AGENT, 'context' => $this->encodeContext($context)]);
+    }
+
+    /**
+     * Monta o system prompt do agente: papel, regras e o prompt
+     * personalizado configurado pela empresa (aba "Inteligência
+     * Artificial"), combinados com as instruções fixas de como/quando
+     * usar cada ferramenta.
+     */
+    private function buildAgentSystemPrompt(array $session): string {
+        $custom = trim($this->config['openai_system_prompt'] ?? '');
+
+        $base = <<<PROMPT
+Você é o assistente de suporte de TI da empresa, atendendo pelo WhatsApp.
+Converse em português, de forma natural, calorosa e direta — como uma pessoa
+de verdade atenderia, não como um menu de opções. Frases curtas, sem
+formalidade excessiva. Use *negrito* com moderação (formatação do WhatsApp:
+um asterisco de cada lado). Nunca use markdown de link nem tabelas.
+
+Seu objetivo, na prática, é sempre um destes três:
+1. Ajudar a pessoa a abrir um chamado de suporte.
+2. Consultar o andamento de um chamado já aberto.
+3. Transferir para um atendente humano, quando for o caso.
+
+Para abrir um chamado, você precisa reunir, na conversa (pode ser em
+qualquer ordem, e mais de uma coisa por mensagem):
+- uma descrição clara do problema;
+- o nome de quem está pedindo;
+- o e-mail de quem está pedindo (usado para achar a conta da pessoa no
+  sistema, se existir);
+- a localização/filial da pessoa — chame a ferramenta list_locations pra
+  saber quais existem antes de perguntar; se a lista vier vazia, pode
+  seguir sem perguntar localização.
+Só chame create_ticket depois de ter TODOS esses dados. Nunca invente
+nome, e-mail ou localização — se a pessoa não disse, pergunte.
+
+Se a pessoa mandar uma foto ou documento, considere isso como evidência do
+problema — não precisa pedir de novo, só confirme que recebeu.
+
+Se a pessoa quiser saber de um chamado específico e souber o número, use
+get_ticket_status. Se quiser ver os chamados dela sem saber o número, use
+list_my_tickets.
+
+Se a pessoa pedir explicitamente para falar com uma pessoa/atendente/
+técnico, ou estiver claramente frustrada/insatisfeita, ou você não
+conseguir ajudar de outro jeito, chame request_human_handoff e avise que
+um atendente vai continuar por ali.
+
+Nunca invente chamados, categorias, status ou qualquer dado do sistema —
+use sempre as ferramentas para obter informação real. Se uma ferramenta
+falhar, avise a pessoa com naturalidade e sugira tentar de novo ou falar
+com um atendente.
+
+Mantenha as respostas curtas (poucas linhas) — é uma conversa de WhatsApp,
+não um e-mail.
+PROMPT;
+
+        if ($custom !== '') {
+            $base .= "\n\nInstruções específicas desta empresa:\n{$custom}";
+        }
+
+        if (!empty($session['wa_name'])) {
+            $base .= "\n\nNome de contato do WhatsApp (pode não ser o nome real — confirme com a pessoa se for usar): {$session['wa_name']}";
+        }
+
+        return $base;
+    }
+
+    /**
+     * Definições das ferramentas disponíveis pro agente, no formato de
+     * function calling da OpenAI.
+     */
+    private function agentToolDefinitions(): array {
+        return [
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'list_locations',
+                    'description' => 'Lista as filiais/localizações cadastradas no sistema, para o usuário escolher a dele antes de abrir um chamado.',
+                    'parameters'  => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'create_ticket',
+                    'description' => 'Abre um novo chamado de suporte. Só chame quando já tiver descrição, nome e e-mail do solicitante, e (se list_locations retornou alguma) o location_id escolhido.',
+                    'parameters'  => [
+                        'type'       => 'object',
+                        'properties' => [
+                            'description'     => ['type' => 'string', 'description' => 'Descrição do problema relatado pelo usuário'],
+                            'requester_name'  => ['type' => 'string', 'description' => 'Nome de quem está solicitando'],
+                            'requester_email' => ['type' => 'string', 'description' => 'E-mail de quem está solicitando'],
+                            'location_id'     => ['type' => 'integer', 'description' => 'ID da localização escolhida (retornado por list_locations). Use 0 se não houver localizações cadastradas.'],
+                        ],
+                        'required' => ['description', 'requester_name', 'requester_email'],
+                    ],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'list_my_tickets',
+                    'description' => 'Lista os chamados abertos do usuário atual, se ele tiver conta cadastrada no sistema.',
+                    'parameters'  => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'get_ticket_status',
+                    'description' => 'Consulta o status e os últimos acompanhamentos de um chamado específico, pelo número.',
+                    'parameters'  => [
+                        'type'       => 'object',
+                        'properties' => ['ticket_id' => ['type' => 'integer', 'description' => 'Número do chamado']],
+                        'required'   => ['ticket_id'],
+                    ],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'request_human_handoff',
+                    'description' => 'Transfere a conversa para um atendente humano.',
+                    'parameters'  => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Executa uma chamada de ferramenta decidida pela IA e devolve o
+     * resultado (que volta pra IA como mensagem "tool", pra ela formular
+     * a resposta final em linguagem natural).
+     */
+    private function executeAgentTool(array $call, string $from, ?string $fromReal, array $session, array &$context): array {
+        $name = $call['function']['name'] ?? '';
+        $args = json_decode($call['function']['arguments'] ?? '{}', true);
+        if (!is_array($args)) $args = [];
+
+        switch ($name) {
+            case 'list_locations':
+                $locations = $this->glpiApi->getLocations();
+                return ['locations' => array_map(
+                    fn($l) => ['id' => (int)$l['id'], 'name' => $l['name']],
+                    $locations
+                )];
+
+            case 'create_ticket':
+                $description = trim($args['description'] ?? '');
+                $reqName     = trim($args['requester_name'] ?? '');
+                $email       = trim($args['requester_email'] ?? '');
+                $locationId  = (int)($args['location_id'] ?? 0);
+
+                if ($description === '' || $reqName === '' || $email === '') {
+                    return ['ok' => false, 'error' => 'Faltam dados obrigatórios: descrição, nome e e-mail são todos necessários.'];
+                }
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    return ['ok' => false, 'error' => 'O e-mail informado não é válido.'];
+                }
+
+                $userId = $this->glpiApi->findUserByEmail($email);
+                $sessionForCreate = $session;
+                $sessionForCreate['users_id'] = $userId;
+
+                $categories = $this->glpiApi->getCategories();
+                $catId      = $this->ai->detectCategory($description, $categories);
+
+                $ticket = $this->createTicketRecord(
+                    $from, $description, $locationId, $catId, $sessionForCreate,
+                    $fromReal, $reqName, $context['attachment_ids'] ?? []
+                );
+
+                if (!$ticket) {
+                    return ['ok' => false, 'error' => 'Falha ao criar o chamado no sistema.'];
+                }
+
+                $context['attachment_ids'] = [];
+                return ['ok' => true, 'ticket_id' => $ticket['id']];
+
+            case 'list_my_tickets':
+                $userId = (int)($session['users_id'] ?? 0);
+                if ($userId <= 0) {
+                    return ['ok' => false, 'error' => 'Este contato não tem uma conta vinculada no sistema — peça o número do chamado, se souber.'];
+                }
+                $tickets = $this->glpiApi->getUserTickets($userId, 5);
+                return ['ok' => true, 'tickets' => array_map(fn($t) => [
+                    'id'     => $t['id'] ?? 0,
+                    'name'   => $t['name'] ?? '',
+                    'status' => $this->getStatusLabel((int)($t['status'] ?? 0)),
+                ], $tickets)];
+
+            case 'get_ticket_status':
+                $ticketId = (int)($args['ticket_id'] ?? 0);
+                if ($ticketId <= 0) {
+                    return ['ok' => false, 'error' => 'Número de chamado inválido.'];
+                }
+                $ticket = $this->glpiApi->getTicket($ticketId);
+                if (!$ticket) {
+                    return ['ok' => false, 'error' => 'Chamado não encontrado.'];
+                }
+                return ['ok' => true, 'ticket' => [
+                    'id'        => $ticket['id'] ?? $ticketId,
+                    'name'      => $ticket['name'] ?? '',
+                    'status'    => $this->getStatusLabel((int)($ticket['status'] ?? 0)),
+                    'followups' => array_map(
+                        fn($f) => $f['content'] ?? '',
+                        array_slice($ticket['followups'] ?? [], 0, 3)
+                    ),
+                ]];
+
+            case 'request_human_handoff':
+                $this->transferToHuman($from, $session, false);
+                return ['ok' => true];
+
+            default:
+                return ['ok' => false, 'error' => "Ferramenta desconhecida: {$name}"];
         }
     }
 
@@ -541,7 +893,7 @@ class PluginWhatsappbotBot {
                 return;
             }
             $this->wa->send($from,
-                "⚠️ Não encontrei sua conta no sistema.\n\nPor favor, escolha outra opção ou fale com um técnico (*opção 3*)."
+                "⚠️ Não encontrei sua conta no sistema.\n\nPor favor, escolha outra opção ou fale com um técnico (opção 3)."
             );
             return;
         }
@@ -549,7 +901,7 @@ class PluginWhatsappbotBot {
         $tickets = $this->glpiApi->getUserTickets($userId, 5);
 
         if (empty($tickets)) {
-            $this->wa->send($from, "📭 Você não possui chamados abertos no momento.\n\nDigite a *opção 1* para abrir um novo chamado.");
+            $this->wa->send($from, "📭 Você não possui chamados abertos no momento.\n\nDigite a opção 1 para abrir um novo chamado.");
             return;
         }
 
@@ -560,7 +912,7 @@ class PluginWhatsappbotBot {
 
         if (!$formatted) {
             // Fallback sem IA
-            $msg = "📋 *Seus chamados:*\n\n";
+            $msg = "📋 Seus chamados:\n\n";
             foreach ($tickets as $t) {
                 $statusLabel = $this->getStatusLabel($t['status']);
                 $msg .= "• *#{$t['id']}* — {$t['name']}\n  {$statusLabel}\n\n";
@@ -568,7 +920,7 @@ class PluginWhatsappbotBot {
             $formatted = $msg;
         }
 
-        $formatted .= "\n\n_Digite *menu* para voltar_";
+        $formatted .= "\n\n_Digite menu para voltar_";
         $this->wa->send($from, $formatted);
         $this->updateSession($from, ['state' => self::STATE_MENU]);
     }
@@ -592,7 +944,7 @@ class PluginWhatsappbotBot {
         $prompt = "Formate os detalhes deste chamado de forma clara para WhatsApp, incluindo status, técnico responsável e últimas atualizações: " . json_encode($ticket, JSON_UNESCAPED_UNICODE);
         $formatted = $this->ai->complete($prompt) ?? "Chamado #{$ticket['id']}: {$ticket['name']} — Status: {$this->getStatusLabel($ticket['status'])}";
 
-        $this->wa->send($from, $formatted . "\n\n_Digite *menu* para voltar_");
+        $this->wa->send($from, $formatted . "\n\n_Digite menu para voltar_");
         $this->updateSession($from, ['state' => self::STATE_MENU]);
     }
 
@@ -634,10 +986,15 @@ class PluginWhatsappbotBot {
     /**
      * Transfere para atendimento humano
      */
-    private function transferToHuman(string $from, array $session): void {
-        $this->wa->send($from,
-            "👨‍💻 Transferindo para atendimento humano...\n\nUm técnico irá assumir essa conversa em breve. Por favor, aguarde.\n\n_Tempo médio de espera: alguns minutos_"
-        );
+    private function transferToHuman(string $from, array $session, bool $sendMessage = true): void {
+        // No modo agente quem avisa a pessoa é a própria IA, na resposta
+        // final que ela formula depois de chamar request_human_handoff —
+        // mandar essa mensagem fixa também duplicaria o aviso.
+        if ($sendMessage) {
+            $this->wa->send($from,
+                "👨‍💻 Transferindo para atendimento humano...\n\nUm técnico irá assumir essa conversa em breve. Por favor, aguarde.\n\n_Tempo médio de espera: alguns minutos_"
+            );
+        }
         $this->updateSession($from, [
             'state'    => self::STATE_HUMAN,
             'is_human' => 1
@@ -679,7 +1036,7 @@ class PluginWhatsappbotBot {
         if ($action === 'ask_rating') {
             sleep(1);
             $this->wa->send($from,
-                "⭐ Como você avalia o atendimento?\n\nResponda com um número de 1 a 5:\n\n*1 — Péssimo*\n*2 — Ruim*\n*3 — Regular*\n*4 — Bom*\n*5 — Excelente*"
+                "⭐ Como você avalia o atendimento?\n\nResponda com um número de 1 a 5:\n\n1 — Péssimo\n2 — Ruim\n3 — Regular\n4 — Bom\n5 — Excelente"
             );
             $this->updateSession($from, ['state' => self::STATE_RATING, 'is_human' => 0]);
         } else {
@@ -702,7 +1059,7 @@ class PluginWhatsappbotBot {
         if (empty($content)) return;
 
         $this->wa->send($from,
-            "💬 *Atualização no chamado #{$ticketId}:*\n\n{$content}\n\n_Responda *menu* para ver suas opções_"
+            "💬 Atualização no chamado #{$ticketId}:\n\n{$content}\n\n_Responda menu para ver suas opções_"
         );
     }
 
@@ -974,25 +1331,35 @@ class PluginWhatsappbotBot {
 
         // Tenta encontrar usuário pelo número no GLPI
         $userId = $this->glpiApi->findUserByPhone($from);
+        $agentMode = !empty($this->config['agent_mode']);
 
         $DB->insert('glpi_plugin_whatsappbot_sessions', [
             'wa_number'     => $from,
             'wa_name'       => $name,
             'users_id'      => $userId,
-            'state'         => self::STATE_MENU,
+            'state'         => $agentMode ? self::STATE_AGENT : self::STATE_MENU,
             'is_human'      => 0,
             'date_start'    => date('Y-m-d H:i:s'),
             'date_last_msg' => date('Y-m-d H:i:s'),
         ]);
-
-        // Envia menu de boas-vindas na primeira mensagem
-        $this->sendMenu($from, $name);
 
         $session = $DB->request([
             'FROM'  => 'glpi_plugin_whatsappbot_sessions',
             'WHERE' => ['wa_number' => $from],
             'LIMIT' => 1
         ])->current();
+
+        if ($agentMode) {
+            // No modo agente não existe "menu de boas-vindas" fixo — a
+            // primeira mensagem da pessoa já entra direto na conversa com
+            // a IA (processIncoming trata normalmente, sem sinalizar
+            // sessão nova), que responde de forma natural em vez de
+            // devolver um menu numerado antes de qualquer coisa.
+            return $session;
+        }
+
+        // Envia menu de boas-vindas na primeira mensagem
+        $this->sendMenu($from, $name);
 
         // Sinaliza pro chamador (processIncoming) que o menu já foi enviado
         // agora mesmo — não é um valor de fato salvo no banco, só uma

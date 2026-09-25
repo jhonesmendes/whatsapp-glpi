@@ -126,6 +126,7 @@ Html::header('WhatsApp Bot — Conversas', $_SERVER['PHP_SELF'], 'config', 'Plug
       $state   = $s['state'] ?? 'menu';
       $stateMap = [
         'menu'             => ['Bot — Menu', 'badge-green'],
+        'agent'            => ['Bot — Agente IA', 'badge-green'],
         'open_ticket_desc'   => ['Abrindo chamado', 'badge-orange'],
         'open_ticket_attach' => ['Abrindo chamado (anexo)', 'badge-orange'],
         'open_ticket_cat'  => ['Escolhendo categoria', 'badge-orange'],

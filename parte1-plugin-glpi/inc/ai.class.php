@@ -13,6 +13,10 @@ class PluginWhatsappbotAi {
 
     // Custo em tokens — limite para não gerar respostas gigantes no WA
     const MAX_TOKENS = 400;
+    // Um pouco maior que MAX_TOKENS: no modo agente a resposta às vezes
+    // precisa incluir a confirmação de uma ação (ex: número do chamado
+    // recém-criado) além do texto natural.
+    const AGENT_MAX_TOKENS = 600;
 
     public function __construct(array $config) {
         $this->apiKey       = $config['openai_api_key']       ?? '';
@@ -164,6 +168,68 @@ PROMPT;
         // Só aceita o ID se ele realmente existir na lista recebida
         $validIds = array_column($categories, 'id');
         return in_array($catId, array_map('intval', $validIds), true) ? $catId : 0;
+    }
+
+    /**
+     * Envia uma conversa completa (histórico) pra OpenAI com "tools"
+     * (function calling) disponíveis — usado pelo modo agente, onde a
+     * própria IA decide dinamicamente o que perguntar e quando chamar
+     * cada ação (abrir chamado, consultar, transferir pra humano), em vez
+     * de seguir uma máquina de estados fixa por trás.
+     *
+     * @param array $messages Histórico completo (system + user/assistant/tool)
+     * @param array $tools    Definições das ferramentas, no formato da API da OpenAI
+     * @return array|null     ['content' => string|null, 'tool_calls' => array]
+     */
+    public function chatWithTools(array $messages, array $tools): ?array {
+        if (empty($this->apiKey)) {
+            $this->log('API Key não configurada');
+            return null;
+        }
+
+        $payload = [
+            'model'      => $this->model,
+            'messages'   => $messages,
+            'tools'      => $tools,
+            'max_tokens' => self::AGENT_MAX_TOKENS,
+        ];
+
+        $ch = curl_init('https://api.openai.com/v1/chat/completions');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $this->apiKey,
+            ],
+        ]);
+
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            $this->log("OpenAI (agent) CURL error: $err");
+            return null;
+        }
+
+        $data = json_decode($resp, true);
+        if ($code !== 200) {
+            $errMsg = $data['error']['message'] ?? $resp;
+            $this->log("OpenAI (agent) HTTP $code: $errMsg");
+            return null;
+        }
+
+        $message = $data['choices'][0]['message'] ?? null;
+        if (!$message) return null;
+
+        return [
+            'content'    => $message['content'] ?? null,
+            'tool_calls' => $message['tool_calls'] ?? [],
+        ];
     }
 
     private function log(string $msg): void {

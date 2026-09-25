@@ -126,6 +126,7 @@ function plugin_whatsappbot_install() {
             `post_resolve_action`   varchar(50)  DEFAULT 'ask_rating',
             `tech_notify_numbers`   text,
             `is_active`             tinyint(1)   DEFAULT 0,
+            `agent_mode`            tinyint(1)   DEFAULT 0,
             `date_mod`              datetime     DEFAULT NULL,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET={$default_charset} COLLATE={$default_collation}";
@@ -159,6 +160,7 @@ function plugin_whatsappbot_install() {
             'menu_reminder_message_2' => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_reminder_message_2` text AFTER `menu_reminder_message`",
             'menu_blocked_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_blocked_message` text AFTER `menu_reminder_message_2`",
             'default_requester_id'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `default_requester_id` int DEFAULT 0 AFTER `default_group_id`",
+            'agent_mode'              => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `agent_mode` tinyint(1) DEFAULT 0 AFTER `is_active`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {
