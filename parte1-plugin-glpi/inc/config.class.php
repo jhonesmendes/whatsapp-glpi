@@ -32,6 +32,7 @@ class PluginWhatsappbotConfig extends CommonGLPI {
         return [
             'baileys_url'          => fn($v) => trim($v),
             'baileys_token'        => fn($v) => trim($v),
+            'extension_token'      => fn($v) => trim($v),
             'whatsapp_number'      => fn($v) => trim($v),
             'timeout_minutes'      => fn($v) => (int)$v,
             'openai_api_key'       => fn($v) => trim($v),

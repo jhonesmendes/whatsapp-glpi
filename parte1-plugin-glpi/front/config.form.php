@@ -22,6 +22,9 @@ global $CFG_GLPI;
 $webhookUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
     . '://' . $_SERVER['HTTP_HOST']
     . $CFG_GLPI['root_doc'] . '/plugins/whatsappbot/webhook.php';
+$extensionUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
+    . '://' . $_SERVER['HTTP_HOST']
+    . $CFG_GLPI['root_doc'] . '/plugins/whatsappbot/extension.php';
 
 PluginWhatsappbotConfig::renderStyles();
 ?>
@@ -81,6 +84,33 @@ PluginWhatsappbotConfig::renderStyles();
         <input type="checkbox" name="is_active" id="is_active" value="1"
           <?= !empty($config['is_active']) ? 'checked' : '' ?>>
         <label for="is_active" style="font-size:13px;cursor:pointer">Bot ativo (processa mensagens recebidas)</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Extensão do WhatsApp Web -->
+  <div class="wa-section">
+    <div class="wa-section-head"><span class="ico">🧩</span> Extensão do WhatsApp Web (Fibra Forte Carimbo)</div>
+    <div class="wa-section-body">
+      <p class="wa-hint" style="font-size:12px;margin:0 0 12px">
+        Mostra um botão <b>Assumir</b> / <b>Devolver ao bot</b> dentro da conversa aberta no WhatsApp Web.
+        Copie a URL e o token abaixo para a tela de configuração da extensão. Deixe o token vazio para desligar.
+      </p>
+      <div class="wa-grid">
+        <div class="wa-field">
+          <label>URL da extensão</label>
+          <div class="wa-webhook-box"><?= htmlspecialchars($extensionUrl) ?></div>
+        </div>
+        <div class="wa-field">
+          <label>Token da extensão</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" name="extension_token" id="extension_token"
+              value="<?= htmlspecialchars($config['extension_token'] ?? '') ?>"
+              placeholder="Vazio = extensão desligada" autocomplete="off">
+            <button type="button" class="btn-test" onclick="generateExtensionToken()">Gerar</button>
+          </div>
+          <span class="wa-hint">Gerar já salva o token. Trocar o token desconecta todas as extensões já configuradas.</span>
+        </div>
       </div>
     </div>
   </div>
@@ -170,6 +200,19 @@ function disconnectWhatsapp() {
       dot.className = 'wa-dot red';
       text.textContent = '❌ Erro de rede: ' + e.message;
     });
+}
+
+// Gera e já salva: só preencher o campo não gravava nada se a pessoa
+// não clicasse em "Salvar configurações" lá embaixo depois.
+function generateExtensionToken() {
+  const campo = document.getElementById('extension_token');
+  if (campo.value && !confirm('Já existe um token. Gerar outro desconecta as extensões configuradas com o atual. Continuar?')) {
+    return;
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  campo.value = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  saveConfig();
+  document.getElementById('save-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function showQrCode() {

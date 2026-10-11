@@ -102,6 +102,7 @@ function plugin_whatsappbot_install() {
             `id`                    int {$default_key_sign} NOT NULL AUTO_INCREMENT,
             `baileys_url`           varchar(255) DEFAULT 'http://localhost:3333',
             `baileys_token`         varchar(255) DEFAULT '',
+            `extension_token`       varchar(255) DEFAULT '',
             `whatsapp_number`       varchar(20)  DEFAULT '',
             `openai_api_key`        varchar(255) DEFAULT '',
             `openai_model`          varchar(50)  DEFAULT 'gpt-4.1',
@@ -161,6 +162,7 @@ function plugin_whatsappbot_install() {
             'menu_blocked_message'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `menu_blocked_message` text AFTER `menu_reminder_message_2`",
             'default_requester_id'    => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `default_requester_id` int DEFAULT 0 AFTER `default_group_id`",
             'agent_mode'              => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `agent_mode` tinyint(1) DEFAULT 0 AFTER `is_active`",
+            'extension_token'         => "ALTER TABLE `glpi_plugin_whatsappbot_configs` ADD COLUMN `extension_token` varchar(255) DEFAULT '' AFTER `baileys_token`",
         ];
         foreach ($newColumns as $column => $alterQuery) {
             if (!$DB->fieldExists('glpi_plugin_whatsappbot_configs', $column)) {

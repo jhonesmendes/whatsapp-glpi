@@ -9,39 +9,9 @@ Session::checkRight('config', READ);
 
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/config.class.php');
 include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/whatsapp.class.php');
+include_once(GLPI_ROOT . '/plugins/whatsappbot/inc/handoff.class.php');
 
 global $DB;
-
-/**
- * Registra o canal (bot/atendente) do ÚLTIMO chamado da sessão informada.
- * Guardado por chamado, não por sessão — sem isso, telas externas (ex:
- * dashboard de acompanhamento) só conseguem ver o status do chamado mais
- * recente de cada número, perdendo o histórico de chamados anteriores.
- */
-function wabot_sync_ticket_channel($DB, string $waNumber, int $isHuman): void {
-    $session = $DB->request([
-        'FROM'  => 'glpi_plugin_whatsappbot_sessions',
-        'WHERE' => ['wa_number' => $waNumber],
-        'LIMIT' => 1
-    ])->current();
-
-    $ticketId = (int)($session['last_ticket_id'] ?? 0);
-    if ($ticketId <= 0) return;
-
-    $exists = $DB->request([
-        'FROM'  => 'glpi_plugin_whatsappbot_ticket_channel',
-        'WHERE' => ['tickets_id' => $ticketId],
-        'LIMIT' => 1
-    ])->current();
-
-    $fields = ['wa_number' => $waNumber, 'is_human' => $isHuman, 'date_mod' => date('Y-m-d H:i:s')];
-    if ($exists) {
-        $DB->update('glpi_plugin_whatsappbot_ticket_channel', $fields, ['tickets_id' => $ticketId]);
-    } else {
-        $fields['tickets_id'] = $ticketId;
-        $DB->insert('glpi_plugin_whatsappbot_ticket_channel', $fields);
-    }
-}
 
 // Ação: assumir conversa como humano
 //
@@ -49,12 +19,7 @@ function wabot_sync_ticket_channel($DB, string $waNumber, int $isHuman): void {
 // identificador de privacidade do WhatsApp), não só dígitos — por isso
 // não usamos is_numeric() aqui, só confirmamos que o parâmetro veio.
 if (!empty($_GET['take'])) {
-    $wa_number = $_GET['take'];
-    $DB->update('glpi_plugin_whatsappbot_sessions', [
-        'is_human'    => 1,
-        'human_agent' => Session::getLoginUserID(true)
-    ], ['wa_number' => $wa_number]);
-    wabot_sync_ticket_channel($DB, $wa_number, 1);
+    PluginWhatsappbotHandoff::take($_GET['take'], (string)Session::getLoginUserID(true));
     Session::addMessageAfterRedirect("Conversa assumida. Responda pelo seu WhatsApp.", true, INFO);
     Html::back();
     exit;
@@ -62,22 +27,7 @@ if (!empty($_GET['take'])) {
 
 // Ação: devolver ao bot (finaliza o atendimento humano)
 if (!empty($_GET['release'])) {
-    $wa_number = $_GET['release'];
-    wabot_sync_ticket_channel($DB, $wa_number, 0);
-    $DB->update('glpi_plugin_whatsappbot_sessions', [
-        'is_human'    => 0,
-        'human_agent' => '',
-        'state'       => 'menu',
-        'context'     => null,
-    ], ['wa_number' => $wa_number]);
-
-    // Antes isso só mudava o estado no banco, em silêncio — o usuário
-    // continuava achando que estava esperando um humano, sem saber que o
-    // atendimento tinha sido encerrado, até mandar mensagem de novo.
-    $config = PluginWhatsappbotConfig::getConfig();
-    $wa     = new PluginWhatsappbotWhatsapp($config);
-    $wa->send($wa_number, "✅ Atendimento encerrado pelo técnico.\n\n_Digite *menu* para novas opções_");
-
+    PluginWhatsappbotHandoff::release($_GET['release']);
     Session::addMessageAfterRedirect("Conversa devolvida ao bot.", true, INFO);
     Html::back();
     exit;
