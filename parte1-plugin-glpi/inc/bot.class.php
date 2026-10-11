@@ -32,6 +32,13 @@ class PluginWhatsappbotBot {
     // guardadas — mais que isso e a coluna "context" (limite de 64KB)
     // e o custo de tokens por mensagem cresceriam sem necessidade.
     const AGENT_HISTORY_LIMIT = 20;
+    // Depois de aberto um chamado, quanto tempo (min) a equipe tem antes
+    // de uma cobrança do usuário virar lembrete pros técnicos.
+    const TICKET_GRACE_MINUTES = 10;
+
+    // Chamado ainda em aberto da conversa atual (modo agente) — ver
+    // getActiveTicketInfo(). Preenchido a cada mensagem em handleAgentTurn.
+    private ?array $activeTicket = null;
 
     public function __construct() {
         $this->config  = PluginWhatsappbotConfig::getConfig();
@@ -606,8 +613,13 @@ class PluginWhatsappbotBot {
 
         $history[] = ['role' => 'user', 'content' => $body];
 
+        // Sem isso, a IA não sabia que já tinha aberto um chamado (o
+        // histórico guarda só o texto, não o resultado do create_ticket) e
+        // qualquer mensagem seguinte ("ok", "e aí?") recomeçava a abertura.
+        $this->activeTicket = $this->getActiveTicketInfo($session);
+
         $messages = array_merge(
-            [['role' => 'system', 'content' => $this->buildAgentSystemPrompt($session)]],
+            [['role' => 'system', 'content' => $this->buildAgentSystemPrompt($session, $context, $this->activeTicket)]],
             array_slice($history, -self::AGENT_HISTORY_LIMIT)
         );
 
@@ -666,7 +678,7 @@ class PluginWhatsappbotBot {
      * Artificial"), combinados com as instruções fixas de como/quando
      * usar cada ferramenta.
      */
-    private function buildAgentSystemPrompt(array $session): string {
+    private function buildAgentSystemPrompt(array $session, array $context = [], ?array $active = null): string {
         $custom = trim($this->config['openai_system_prompt'] ?? '');
 
         $base = <<<PROMPT
@@ -722,7 +734,88 @@ PROMPT;
             $base .= "\n\nNome de contato do WhatsApp (pode não ser o nome real — confirme com a pessoa se for usar): {$session['wa_name']}";
         }
 
+        $req = $context['requester'] ?? null;
+        if ($req) {
+            $base .= "\n\nDados que a pessoa já informou nesta conversa: nome \"{$req['name']}\", e-mail \"{$req['email']}\""
+                . (!empty($req['location_id']) ? ", localização id {$req['location_id']}" : '')
+                . ". Para um novo chamado, reaproveite (só confirme se ainda valem) — não peça tudo de novo.";
+        }
+
+        if ($active) {
+            $base .= "\n\n" . $this->buildActiveTicketPrompt($active);
+        }
+
         return $base;
+    }
+
+    /**
+     * Instruções para quando a pessoa já tem um chamado em aberto: decidir
+     * se a mensagem é sobre ele (cobrança, complemento, "ok") ou um
+     * problema novo — e, em caso de cobrança, aplicar a regra dos
+     * TICKET_GRACE_MINUTES minutos.
+     */
+    private function buildActiveTicketPrompt(array $t): string {
+        $grace = self::TICKET_GRACE_MINUTES;
+        $replied = $t['technician_replied'] ? 'sim' : 'não';
+
+        $txt = "CHAMADO JÁ ABERTO NESTA CONVERSA\n"
+            . "- Chamado #{$t['id']} — \"{$t['name']}\" — status: {$t['status']} — aberto há {$t['minutes_open']} min.\n"
+            . "- Algum técnico já respondeu no chamado: {$replied}.";
+        foreach ($t['replies'] as $r) {
+            $txt .= "\n  • Resposta do técnico ({$r['date']}): {$r['content']}";
+        }
+
+        $txt .= "\n\nAntes de responder, classifique a última mensagem da pessoa:\n"
+            . "(a) É sobre o chamado #{$t['id']}: cobrança/pergunta de andamento, informação complementar, resposta ao técnico, agradecimento ou só \"ok\".\n"
+            . "(b) É um problema NOVO e diferente do chamado #{$t['id']}.\n"
+            . "Na dúvida, pergunte em uma frase curta se é sobre o chamado #{$t['id']} ou outro problema. Nunca recomece a abertura de chamado por conta própria.\n\n"
+            . "Se for (a):\n"
+            . "- NUNCA chame create_ticket nem peça de novo descrição, nome, e-mail ou localização.\n"
+            . "- Agradecimento ou \"ok\": responda em uma frase curta, sem perguntas e sem oferecer abrir chamado.\n"
+            . "- Informação nova sobre o problema ou resposta ao técnico: registre com add_ticket_note (kind \"complemento\") e confirme em uma frase.\n";
+
+        if ($t['technician_replied']) {
+            $txt .= "- Cobrança: o técnico já respondeu — resuma o que ele disse (acima). Se a pessoa trouxer algo novo, registre com add_ticket_note (kind \"complemento\").\n";
+        } elseif ($t['minutes_open'] < $grace) {
+            $txt .= "- Cobrança: o chamado foi aberto há menos de {$grace} minutos. Diga com naturalidade que ele já está na fila da equipe e peça para aguardar mais um pouco. Não registre a cobrança.\n";
+        } else {
+            $txt .= "- Cobrança: já passou de {$grace} minutos sem resposta de técnico. Registre com add_ticket_note (kind \"cobranca\") — isso avisa os técnicos — e diga que a equipe foi lembrada e vai retornar por aqui.\n";
+        }
+
+        $txt .= "\nSe for (b): confirme que é outro problema e siga o fluxo normal de abertura. Ao chamar create_ticket, passe new_issue=true.";
+        return $txt;
+    }
+
+    /**
+     * Último chamado aberto pela conversa, se ainda não estiver resolvido
+     * ou fechado — com há quanto tempo foi aberto e se algum técnico já
+     * respondeu publicamente (acompanhamentos que o próprio bot grava são
+     * sempre privados, então não contam como resposta).
+     */
+    private function getActiveTicketInfo(array $session): ?array {
+        $ticketId = (int)($session['last_ticket_id'] ?? 0);
+        if ($ticketId <= 0) return null;
+
+        $ticket = $this->glpiApi->getTicket($ticketId);
+        if (!$ticket) return null;
+
+        $status = (int)($ticket['status'] ?? 0);
+        if (in_array($status, [Ticket::SOLVED, Ticket::CLOSED], true)) return null;
+
+        $opened  = strtotime($ticket['date'] ?? '') ?: time();
+        $replies = array_values(array_filter($ticket['followups'] ?? [], fn($f) => empty($f['is_private'])));
+
+        return [
+            'id'                 => $ticketId,
+            'name'               => $ticket['name'] ?? '',
+            'status'             => $this->getStatusLabel($status),
+            'minutes_open'       => max(0, (int)floor((time() - $opened) / 60)),
+            'technician_replied' => !empty($replies),
+            'replies'            => array_map(fn($f) => [
+                'date'    => $f['date'] ?? '',
+                'content' => mb_substr(trim($f['content'] ?? ''), 0, 300),
+            ], array_slice($replies, 0, 2)),
+        ];
     }
 
     /**
@@ -751,8 +844,24 @@ PROMPT;
                             'requester_name'  => ['type' => 'string', 'description' => 'Nome de quem está solicitando'],
                             'requester_email' => ['type' => 'string', 'description' => 'E-mail de quem está solicitando'],
                             'location_id'     => ['type' => 'integer', 'description' => 'ID da localização escolhida (retornado por list_locations). Use 0 se não houver localizações cadastradas.'],
+                            'new_issue'       => ['type' => 'boolean', 'description' => 'Obrigatório (true) quando a pessoa já tem um chamado aberto e confirmou que este é um problema diferente.'],
                         ],
                         'required' => ['description', 'requester_name', 'requester_email'],
+                    ],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'add_ticket_note',
+                    'description' => 'Registra no chamado já aberto desta conversa uma mensagem da pessoa: informação complementar/resposta ao técnico (kind "complemento") ou cobrança de retorno (kind "cobranca", que também lembra os técnicos quando o chamado já passou do prazo sem resposta).',
+                    'parameters'  => [
+                        'type'       => 'object',
+                        'properties' => [
+                            'kind' => ['type' => 'string', 'enum' => ['complemento', 'cobranca']],
+                            'text' => ['type' => 'string', 'description' => 'O que a pessoa disse, com as palavras dela'],
+                        ],
+                        'required' => ['kind', 'text'],
                     ],
                 ],
             ],
@@ -817,6 +926,13 @@ PROMPT;
                 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     return ['ok' => false, 'error' => 'O e-mail informado não é válido.'];
                 }
+                // Trava contra o loop de reabertura: com chamado em aberto,
+                // só abre outro se a IA afirmar que é um problema diferente.
+                if ($this->activeTicket && empty($args['new_issue'])) {
+                    return ['ok' => false, 'error' =>
+                        "Já existe o chamado #{$this->activeTicket['id']} aberto para esta pessoa. Se for o mesmo problema, use add_ticket_note. " .
+                        "Só abra outro se ela confirmar que é um problema diferente — nesse caso chame create_ticket de novo com new_issue=true."];
+                }
 
                 $userId = $this->glpiApi->findUserByEmail($email);
                 $sessionForCreate = $session;
@@ -835,7 +951,44 @@ PROMPT;
                 }
 
                 $context['attachment_ids'] = [];
+                $context['requester'] = ['name' => $reqName, 'email' => $email, 'location_id' => $locationId];
+                // Conta como chamado ativo já nesta mesma rodada: impede um
+                // segundo create_ticket em sequência.
+                $this->activeTicket = [
+                    'id' => (int)$ticket['id'], 'name' => '', 'status' => $this->getStatusLabel(1),
+                    'minutes_open' => 0, 'technician_replied' => false, 'replies' => [],
+                ];
                 return ['ok' => true, 'ticket_id' => $ticket['id']];
+
+            case 'add_ticket_note':
+                $active = $this->activeTicket;
+                if (!$active) {
+                    return ['ok' => false, 'error' => 'Esta pessoa não tem chamado em aberto.'];
+                }
+                $kind = ($args['kind'] ?? '') === 'cobranca' ? 'cobranca' : 'complemento';
+                $text = trim($args['text'] ?? '');
+                if ($text === '') {
+                    return ['ok' => false, 'error' => 'Texto vazio.'];
+                }
+
+                // Privado de propósito: um acompanhamento público dispararia
+                // notifyFollowup() e o usuário receberia a própria mensagem
+                // de volta como "Atualização no chamado".
+                $label = $kind === 'cobranca' ? '⏰ Cobrança do usuário via WhatsApp' : '💬 Mensagem do usuário via WhatsApp';
+                $ok = $this->glpiApi->addFollowup($active['id'], "{$label}:\n{$text}", true);
+
+                $notified = false;
+                $grace = self::TICKET_GRACE_MINUTES;
+                if ($kind === 'cobranca' && !$active['technician_replied'] && $active['minutes_open'] >= $grace) {
+                    // No máximo um lembrete por chamado a cada TICKET_GRACE_MINUTES
+                    $last = (int)($context['reminded'][$active['id']] ?? 0);
+                    if (time() - $last >= $grace * 60) {
+                        $this->notifyTechniciansReminder($active['id'], $active['name'], $text, $active['minutes_open'], $session);
+                        $context['reminded'] = [$active['id'] => time()];
+                        $notified = true;
+                    }
+                }
+                return ['ok' => $ok, 'ticket_id' => $active['id'], 'technicians_notified' => $notified];
 
             case 'list_my_tickets':
                 $userId = (int)($session['users_id'] ?? 0);
@@ -1079,12 +1232,8 @@ PROMPT;
         string $description,
         array  $session
     ): void {
-        $groupId    = (int)($this->config['default_group_id'] ?? 0);
-        $glpiUrl    = rtrim($this->config['glpi_api_url'] ?? '', '/');
-
         // URL direta do chamado no GLPI para o técnico acessar
-        $glpiBase   = preg_replace('/\/apirest\.php.*$/', '', $glpiUrl);
-        $ticketUrl  = "{$glpiBase}/front/ticket.form.php?id={$ticketId}";
+        $ticketUrl  = $this->ticketUrl($ticketId);
 
         // Nome do solicitante (nome WA ou usuário GLPI)
         $requesterName = trim($session['wa_name'] ?? '') ?: "WhatsApp {$session['wa_number']}";
@@ -1100,6 +1249,41 @@ PROMPT;
                "👤 Solicitante: {$requesterName}\n" .
                "📝 Descrição:\n_{$descPreview}_\n\n" .
                "🔗 Acesse: {$ticketUrl}";
+
+        $this->sendToTechnicians($msg, $ticketId, $session);
+    }
+
+    /**
+     * Lembra os técnicos de um chamado que o usuário cobrou pelo WhatsApp
+     * sem ter tido resposta ainda (ver ferramenta add_ticket_note do
+     * modo agente).
+     */
+    private function notifyTechniciansReminder(int $ticketId, string $ticketName, string $userMessage, int $minutesOpen, array $session): void {
+        $requesterName = trim($session['wa_name'] ?? '') ?: "WhatsApp {$session['wa_number']}";
+        $preview = mb_strlen($userMessage) > 200 ? mb_substr($userMessage, 0, 200) . '...' : $userMessage;
+
+        $msg = "⏰ *Usuário cobrando chamado sem resposta*\n\n" .
+               "🔢 Chamado: *#{$ticketId}*\n" .
+               "📋 Assunto: {$ticketName}\n" .
+               "👤 Solicitante: {$requesterName}\n" .
+               "🕐 Aberto há {$minutesOpen} min, sem resposta de técnico\n" .
+               "💬 Mensagem:\n_{$preview}_\n\n" .
+               "🔗 Acesse: {$this->ticketUrl($ticketId)}";
+
+        $this->sendToTechnicians($msg, $ticketId, $session);
+    }
+
+    private function ticketUrl(int $ticketId): string {
+        $glpiBase = preg_replace('/\/apirest\.php.*$/', '', rtrim($this->config['glpi_api_url'] ?? '', '/'));
+        return "{$glpiBase}/front/ticket.form.php?id={$ticketId}";
+    }
+
+    /**
+     * Envia uma mensagem para os técnicos do grupo configurado (com
+     * celular cadastrado no GLPI) e para os números fixos de plantão.
+     */
+    private function sendToTechnicians(string $msg, int $ticketId, array $session): void {
+        $groupId = (int)($this->config['default_group_id'] ?? 0);
 
         // Busca técnicos do grupo com celular cadastrado no GLPI
         $technicians = $this->glpiApi->getTechniciansByGroup($groupId);
@@ -1122,7 +1306,7 @@ PROMPT;
         }
 
         if (empty($technicians)) {
-            $this->log("notifyTechnicians: nenhum técnico encontrado para notificar (groupId={$groupId})");
+            $this->log("sendToTechnicians: nenhum técnico encontrado para notificar (groupId={$groupId})");
             return;
         }
 
@@ -1159,7 +1343,7 @@ PROMPT;
             }
         }
 
-        $this->log("notifyTechnicians: chamado #{$ticketId} — {$sent} notificados, {$fails} falhas");
+        $this->log("sendToTechnicians: chamado #{$ticketId} — {$sent} notificados, {$fails} falhas");
     }
 
     /**
