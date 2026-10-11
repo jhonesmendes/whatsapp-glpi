@@ -1,0 +1,52 @@
+CARIMBO DE NOME - WHATSAPP WEB
+Extensão para Google Chrome e Microsoft Edge
+
+O QUE FAZ
+Toda mensagem enviada pelo WhatsApp Web sai com o nome do atendente em negrito na primeira linha:
+
+  *João*
+  Olá, tudo bem? Como posso ajudar?
+
+Funciona ao enviar com Enter, pelo botão Enviar e também na legenda de fotos/arquivos.
+Se o nome não estiver cadastrado, a mensagem não é enviada e aparece um aviso.
+
+INSTALAR NO GOOGLE CHROME
+1. Extraia o .zip numa pasta fixa (ex.: C:\Extensoes\carimbo-whatsapp). Não apague a pasta depois.
+2. Abra chrome://extensions
+3. Ligue o "Modo do desenvolvedor" (canto superior direito).
+4. Clique em "Carregar sem compactação" e selecione a pasta extraída.
+5. A tela de cadastro abre sozinha: digite o nome e clique em Salvar.
+6. Abra ou recarregue o https://web.whatsapp.com
+
+INSTALAR NO MICROSOFT EDGE
+1. Extraia o .zip numa pasta fixa.
+2. Abra edge://extensions
+3. Ligue o "Modo de desenvolvedor" (menu lateral esquerdo, embaixo).
+4. Clique em "Carregar sem pacote" e selecione a pasta extraída.
+5. Cadastre o nome na tela que abrir e clique em Salvar.
+6. Abra ou recarregue o https://web.whatsapp.com
+
+ASSUMIR / DEVOLVER AO BOT (GLPI)
+Ao abrir uma conversa, aparece um cartão logo abaixo do cabeçalho:
+  - "Bot atendendo"          → botão Assumir: para o bot nessa conversa.
+  - "Atendimento humano: X"  → botão Devolver ao bot: o usuário recebe
+                               "Atendimento encerrado pelo técnico".
+  - "Conversa fora do bot"   → contato sem sessão no bot (nada a fazer).
+O nome cadastrado no carimbo é gravado como atendente no GLPI.
+
+Para ativar:
+1. No GLPI: WhatsApp Bot → Conexão → "Extensão do WhatsApp Web".
+   Clique em Gerar, depois em Salvar. Copie a URL e o token.
+2. Na extensão: cole a URL e o token em "Bot do GLPI" e clique em Salvar.
+   O navegador pede permissão para acessar o endereço do GLPI: aceite.
+   A tela mostra "GLPI conectado" se estiver tudo certo.
+Sem URL/token o cartão não aparece e o carimbo continua funcionando normalmente.
+
+TROCAR O NOME
+Clique no ícone da extensão (fixe-o na barra pelo ícone de quebra-cabeça) e altere o nome.
+Vale a partir da próxima mensagem, sem recarregar a página.
+
+OBSERVAÇÕES
+- O nome fica salvo no perfil do navegador. Cada usuário do Windows/perfil tem o seu.
+- Se o WhatsApp Web mudar o layout e o carimbo falhar, a extensão bloqueia o envio
+  e avisa. Nesse caso, desmarque "Carimbo ativo" no ícone da extensão até a correção.

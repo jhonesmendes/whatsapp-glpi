@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Carimbo de Nome</title>
+  <style>
+    :root {
+      --verde: #00a884;
+      --verde-escuro: #008069;
+      --fundo: #ffffff;
+      --texto: #111b21;
+      --suave: #667781;
+      --borda: #d1d7db;
+      --balao: #d9fdd3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 320px;
+      font-family: Segoe UI, Helvetica, Arial, sans-serif;
+      color: var(--texto);
+      background: var(--fundo);
+    }
+    header {
+      background: var(--verde-escuro);
+      color: #fff;
+      padding: 14px 16px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    main { padding: 16px; }
+    label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 6px; }
+    input[type=text], input[type=password] {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid var(--borda);
+      border-radius: 8px;
+      outline: none;
+    }
+    input[type=text]:focus, input[type=password]:focus { border-color: var(--verde); }
+    .secao { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--borda); }
+    .secao h2 { font-size: 14px; margin: 0 0 4px; }
+    .secao p { font-size: 12px; color: var(--suave); margin: 0 0 10px; line-height: 1.4; }
+    .secao label + input { margin-bottom: 10px; }
+    .linha { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; }
+    .previa-titulo { font-size: 13px; color: var(--suave); margin: 16px 0 6px; }
+    .previa {
+      background: #efeae2;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .balao {
+      background: var(--balao);
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: 14px;
+      line-height: 1.35;
+      max-width: 90%;
+      margin-left: auto;
+      box-shadow: 0 1px 0.5px rgba(0,0,0,.13);
+      word-wrap: break-word;
+    }
+    .balao b { display: block; }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 20px;
+      background: var(--verde);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: var(--verde-escuro); }
+    #status { margin-top: 10px; font-size: 13px; text-align: center; min-height: 18px; }
+    .ok { color: var(--verde-escuro); }
+    .erro { color: #d93025; }
+    .dica { font-size: 12px; color: var(--suave); margin-top: 12px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <header>Carimbo de Nome · WhatsApp</header>
+  <main>
+    <label for="nome">Seu nome (aparece no início de cada mensagem)</label>
+    <input type="text" id="nome" maxlength="40" placeholder="Ex.: João" autocomplete="off">
+
+    <div class="linha">
+      <input type="checkbox" id="ativo">
+      <label for="ativo" style="margin:0;color:var(--texto)">Carimbo ativo</label>
+    </div>
+
+    <div class="previa-titulo">Prévia</div>
+    <div class="previa">
+      <div class="balao"><b id="previaNome">João</b>Olá, tudo bem? Como posso ajudar?</div>
+    </div>
+
+    <div class="secao">
+      <h2>Bot do GLPI</h2>
+      <p>Mostra o botão <b>Assumir</b> / <b>Devolver ao bot</b> na conversa aberta. Copie a URL e o token em GLPI → WhatsApp Bot → Conexão.</p>
+      <label for="glpiUrl">URL da extensão (GLPI)</label>
+      <input type="text" id="glpiUrl" placeholder="https://glpi.empresa.com.br/glpi/plugins/whatsappbot/extension.php" autocomplete="off">
+      <label for="glpiToken">Token da extensão</label>
+      <input type="password" id="glpiToken" placeholder="Vazio = botão desligado" autocomplete="off">
+    </div>
+
+    <button id="salvar">Salvar</button>
+    <div id="status"></div>
+    <div class="dica">Depois de salvar, não é preciso recarregar o WhatsApp Web: o nome novo já vale para a próxima mensagem.</div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
