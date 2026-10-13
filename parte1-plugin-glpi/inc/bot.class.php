@@ -123,7 +123,7 @@ class PluginWhatsappbotBot {
                 // entenda algo errado, mas sem voltar pro menu numerado
                 // rígido do fluxo antigo.
                 $this->wa->send($from, "🔄 Conversa reiniciada. Pode me dizer como posso ajudar.");
-                $this->updateSession($from, ['state' => self::STATE_AGENT, 'context' => null, 'is_human' => 0]);
+                $this->updateSession($from, ['state' => self::STATE_AGENT, 'context' => $this->contextKeepingRequester($session['context'] ?? null), 'is_human' => 0]);
             } else {
                 $this->sendMenu($from, $waName);
                 $this->updateSession($from, ['state' => self::STATE_MENU, 'context' => null, 'is_human' => 0]);
@@ -704,6 +704,9 @@ qualquer ordem, e mais de uma coisa por mensagem):
   seguir sem perguntar localização.
 Só chame create_ticket depois de ter TODOS esses dados. Nunca invente
 nome, e-mail ou localização — se a pessoa não disse, pergunte.
+Assim que a pessoa informar nome e e-mail (e a localização, se houver),
+chame save_requester para guardar — assim, da próxima vez, você só
+precisa confirmar se é a mesma pessoa.
 
 Se a pessoa mandar uma foto ou documento, considere isso como evidência do
 problema — não precisa pedir de novo, só confirme que recebeu.
@@ -736,9 +739,19 @@ PROMPT;
 
         $req = $context['requester'] ?? null;
         if ($req) {
-            $base .= "\n\nDados que a pessoa já informou nesta conversa: nome \"{$req['name']}\", e-mail \"{$req['email']}\""
-                . (!empty($req['location_id']) ? ", localização id {$req['location_id']}" : '')
-                . ". Para um novo chamado, reaproveite (só confirme se ainda valem) — não peça tudo de novo.";
+            $loc = !empty($req['location_id'])
+                ? ", localização \"" . ($req['location_name'] ?? '') . "\" (location_id {$req['location_id']})"
+                : '';
+            $base .= "\n\nDADOS DO SOLICITANTE JÁ CONHECIDOS: nome \"{$req['name']}\", e-mail \"{$req['email']}\"{$loc}.\n";
+            if (!empty($req['confirmed'])) {
+                $base .= "A pessoa já confirmou esses dados nesta conversa: use-os direto no create_ticket, sem perguntar nome, e-mail ou localização de novo.";
+            } else {
+                $base .= "Quando for abrir um chamado, NÃO peça nome, e-mail nem localização. Pergunte só uma vez, numa frase curta, "
+                    . "se é a mesma pessoa (ex.: \"É o(a) {$req['name']} ({$req['email']}) de novo?\").\n"
+                    . "- Se confirmar: chame save_requester com esses mesmos dados e siga para o chamado.\n"
+                    . "- Se disser que é outra pessoa ou que algo mudou: pergunte só o que mudou (ou nome e e-mail, se for outra pessoa) e chame save_requester com os dados novos.\n"
+                    . "Não faça essa pergunta em saudações, consultas de chamado ou mensagens que não sejam para abrir chamado.";
+            }
         }
 
         if ($active) {
@@ -853,6 +866,22 @@ PROMPT;
             [
                 'type'     => 'function',
                 'function' => [
+                    'name'        => 'save_requester',
+                    'description' => 'Guarda nome, e-mail e localização do solicitante assim que a pessoa informar ou confirmar que é a mesma pessoa dos dados já conhecidos — para não precisar pedir tudo de novo nas próximas conversas.',
+                    'parameters'  => [
+                        'type'       => 'object',
+                        'properties' => [
+                            'name'        => ['type' => 'string', 'description' => 'Nome de quem está solicitando'],
+                            'email'       => ['type' => 'string', 'description' => 'E-mail de quem está solicitando'],
+                            'location_id' => ['type' => 'integer', 'description' => 'ID da localização (retornado por list_locations), ou 0 se ainda não souber / não houver.'],
+                        ],
+                        'required' => ['name', 'email'],
+                    ],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
                     'name'        => 'add_ticket_note',
                     'description' => 'Registra no chamado já aberto desta conversa uma mensagem da pessoa: informação complementar/resposta ao técnico (kind "complemento") ou cobrança de retorno (kind "cobranca", que também lembra os técnicos quando o chamado já passou do prazo sem resposta).',
                     'parameters'  => [
@@ -951,7 +980,7 @@ PROMPT;
                 }
 
                 $context['attachment_ids'] = [];
-                $context['requester'] = ['name' => $reqName, 'email' => $email, 'location_id' => $locationId];
+                $context['requester'] = $this->buildRequester($reqName, $email, $locationId, $context['requester'] ?? null);
                 // Conta como chamado ativo já nesta mesma rodada: impede um
                 // segundo create_ticket em sequência.
                 $this->activeTicket = [
@@ -959,6 +988,15 @@ PROMPT;
                     'minutes_open' => 0, 'technician_replied' => false, 'replies' => [],
                 ];
                 return ['ok' => true, 'ticket_id' => $ticket['id']];
+
+            case 'save_requester':
+                $reqName = trim($args['name'] ?? '');
+                $email   = trim($args['email'] ?? '');
+                if ($reqName === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    return ['ok' => false, 'error' => 'Informe nome e um e-mail válido.'];
+                }
+                $context['requester'] = $this->buildRequester($reqName, $email, (int)($args['location_id'] ?? 0), $context['requester'] ?? null);
+                return ['ok' => true];
 
             case 'add_ticket_note':
                 $active = $this->activeTicket;
@@ -1445,6 +1483,49 @@ PROMPT;
         return json_decode($json, true) ?? [];
     }
 
+    /**
+     * Monta os dados do solicitante guardados no contexto, já marcados
+     * como confirmados nesta conversa. Sem location_id novo, mantém a
+     * localização anterior da mesma pessoa (mesmo e-mail); guarda também
+     * o nome da localização, pro prompt citar sem chamar list_locations.
+     */
+    private function buildRequester(string $name, string $email, int $locationId, ?array $previous): array {
+        $locationName = '';
+        if ($locationId <= 0 && $previous && strcasecmp($previous['email'] ?? '', $email) === 0) {
+            $locationId   = (int)($previous['location_id'] ?? 0);
+            $locationName = $previous['location_name'] ?? '';
+        } elseif ($locationId > 0) {
+            foreach ($this->glpiApi->getLocations() as $l) {
+                if ((int)$l['id'] === $locationId) {
+                    $locationName = $l['name'];
+                    break;
+                }
+            }
+        }
+
+        return [
+            'name'          => $name,
+            'email'         => $email,
+            'location_id'   => $locationId,
+            'location_name' => $locationName,
+            'confirmed'     => true,
+        ];
+    }
+
+    /**
+     * Contexto "zerado" para reinício de conversa (menu/timeout): descarta
+     * histórico e anexos, mas mantém os dados do solicitante — sem
+     * isso, quem voltava no dia seguinte tinha que informar nome, e-mail
+     * e localização tudo de novo. Volta como não confirmado: o agente só
+     * pergunta se ainda é a mesma pessoa.
+     */
+    private function contextKeepingRequester(?string $raw): ?string {
+        $req = $this->decodeContext($raw)['requester'] ?? null;
+        if (!$req) return null;
+        $req['confirmed'] = false;
+        return $this->encodeContext(['requester' => $req]);
+    }
+
     // ---------------------------------------------------------------
     // Sessões no banco
     // ---------------------------------------------------------------
@@ -1488,7 +1569,7 @@ PROMPT;
             );
             $this->updateSession($s['wa_number'], [
                 'state'    => self::STATE_MENU,
-                'context'  => null,
+                'context'  => $this->contextKeepingRequester($s['context'] ?? null),
                 'is_human' => 0,
             ]);
             $this->log("releaseTimedOutSessions: sessão {$s['wa_number']} devolvida ao menu (parada desde {$s['date_last_msg']})");
