@@ -34,8 +34,11 @@ const MAX_MEDIA_BYTES = parseInt(process.env.MAX_MEDIA_BYTES || String(5 * 1024 
 // celulares, mas pode não aparecer em algum cliente. Com "false", sempre
 // manda a lista como texto numerado (o comportamento antigo).
 const INTERACTIVE_LISTS = (process.env.INTERACTIVE_LISTS || 'true') !== 'false';
-// O WhatsApp aceita no máximo 10 opções por lista — acima disso vai como texto.
-const MAX_LIST_ROWS = 10;
+// A API oficial limita a lista a 10 opções; acima disso vai como texto.
+// Pelo Baileys costuma aceitar mais (em grupos de 10) — dá pra subir aqui
+// e testar no celular; se a lista não aparecer, volte para 10.
+const MAX_LIST_ROWS = parseInt(process.env.MAX_LIST_ROWS || '10');
+const ROWS_PER_SECTION = 10;
 
 let clientState = {
   sock            : null,
@@ -243,6 +246,25 @@ function nativeFlowSelectedId(m) {
 }
 
 /**
+ * Divide as opções em grupos de ROWS_PER_SECTION ("Opções 1–10", ...).
+ */
+function toSections(rows, title) {
+  const sections = [];
+  for (let i = 0; i < rows.length; i += ROWS_PER_SECTION) {
+    const chunk = rows.slice(i, i + ROWS_PER_SECTION);
+    sections.push({
+      title : rows.length <= ROWS_PER_SECTION ? title : `Opções ${i + 1}–${i + chunk.length}`,
+      rows  : chunk.map((r) => ({
+        id          : String(r.id),
+        title       : r.title,
+        description : r.description || '',
+      })),
+    });
+  }
+  return sections;
+}
+
+/**
  * Envia uma lista de opções interativa (abre uma janela com as opções ao
  * tocar no botão). A resposta chega como mensagem comum, com o "id" da
  * opção escolhida no corpo — ver extractMessageText().
@@ -268,14 +290,7 @@ export async function sendList(sock, jid, { text, buttonText, footer = '', rows 
                   name             : 'single_select',
                   buttonParamsJson : JSON.stringify({
                     title    : buttonText,
-                    sections : [{
-                      title : buttonText,
-                      rows  : rows.map((r) => ({
-                        id          : String(r.id),
-                        title       : r.title,
-                        description : r.description || '',
-                      })),
-                    }],
+                    sections : toSections(rows, buttonText),
                   }),
                 }],
               },

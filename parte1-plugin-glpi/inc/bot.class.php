@@ -507,7 +507,7 @@ class PluginWhatsappbotBot {
         }
 
         $header = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
-        $sent = $this->wa->sendList($from, $header, 'Ver opções', $rows, 'Toque em "Ver opções" e escolha a sua');
+        $sent = $this->wa->sendList($from, $header, 'Ver opções', $rows, 'Toque em "Ver opções" e escolha a sua — ou mande o número/nome');
         if (!$sent) {
             // Servidor Baileys antigo (sem /send-list) ou fora do ar:
             // manda a lista como texto numerado, igual era antes.
@@ -519,7 +519,9 @@ class PluginWhatsappbotBot {
 
     /**
      * Posição em $locations escolhida pela resposta: o número da opção
-     * (tocado na lista ou digitado) ou o nome da localização digitado.
+     * (tocado na lista ou digitado) ou o nome digitado do jeito que a
+     * pessoa escrever — "Nobres-MT", "nobres", "sou de Nobres / MT" e
+     * "Nobres / MT" batem com a mesma localização.
      */
     private function matchLocationReply(string $body, array $locations): ?int {
         $body = trim($body);
@@ -528,21 +530,40 @@ class PluginWhatsappbotBot {
             return isset($locations[$idx]) ? $idx : null;
         }
 
-        $needle = mb_strtolower($body);
-        if ($needle === '') return null;
-        $locations = array_values($locations);
-        foreach ($locations as $i => $loc) {
-            if (mb_strtolower(trim($loc['name'])) === $needle) return $i;
-        }
+        $needle = $this->normalizeLocationText($body);
         if (mb_strlen($needle) < 3) return null;
-        $found = null;
-        foreach ($locations as $i => $loc) {
-            if (str_contains(mb_strtolower($loc['name']), $needle)) {
-                if ($found !== null) return null; // ambíguo
-                $found = $i;
+        $names = array_map(fn($l) => $this->normalizeLocationText($l['name']), array_values($locations));
+
+        // Nome igual — se houver localizações repetidas com o mesmo nome,
+        // fica com a primeira.
+        $idx = array_search($needle, $names, true);
+        if ($idx !== false) return $idx;
+
+        // Parte do nome ("nobres") ou nome dentro de uma frase ("sou de
+        // nobres mt"); só aceita se apontar pra uma localização só.
+        $found = [];
+        foreach ($names as $i => $name) {
+            if (str_contains($name, $needle) || (mb_strlen($name) >= 4 && str_contains($needle, $name))) {
+                $found[$name] ??= $i;
             }
         }
-        return $found;
+        return count($found) === 1 ? reset($found) : null;
+    }
+
+    /**
+     * Minúsculas, sem acento e sem pontuação: "Nobres-MT" e "Nobres / MT"
+     * viram os dois "nobres mt".
+     */
+    private function normalizeLocationText(string $text): string {
+        $text = mb_strtolower(trim($text));
+        $text = strtr($text, [
+            'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a',
+            'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ç' => 'c',
+        ]);
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', $text));
     }
 
     /**
@@ -776,12 +797,16 @@ qualquer ordem, e mais de uma coisa por mensagem):
   sistema, se existir);
 - a localização/filial da pessoa — muita gente não entende o que é
   "localização/filial", então NÃO pergunte por texto nem liste os nomes:
-  chame show_location_options, que manda uma lista para a pessoa só tocar
-  na dela, e responda numa frase curta pedindo para escolher na lista
-  abaixo. Se a pessoa responder algo que não seja uma das opções, ficar
-  em dúvida ou perguntar o que é, chame show_location_options de novo
-  (explicando em poucas palavras que é a unidade onde ela trabalha). Se
-  não houver localizações cadastradas, siga sem perguntar.
+  chame show_location_options, que manda a lista de unidades logo depois
+  da sua resposta, e diga numa frase curta para a pessoa escolher a dela
+  na lista abaixo (sem falar em botão). Se ela responder com o nome da
+  unidade do jeito dela (ex.: "Nobres-MT"), compare com a lista e aceite
+  — não mande a lista de novo. Só chame show_location_options outra vez
+  se ela ficar em dúvida ou perguntar o que é (explique em poucas
+  palavras que é a unidade onde ela trabalha). Se não houver localizações
+  cadastradas, siga sem perguntar.
+Peça uma coisa por mensagem (ex.: primeiro o nome, depois o e-mail,
+depois a unidade) — nunca uma lista de várias perguntas de uma vez.
 Só chame create_ticket depois de ter TODOS esses dados. Nunca invente
 nome, e-mail ou localização — se a pessoa não disse, pergunte.
 Assim que a pessoa informar nome e e-mail (e a localização, se houver),
@@ -1042,7 +1067,7 @@ PROMPT;
                 $this->pendingLocationList   = $locations;
                 $context['offered_locations'] = $locations;
                 return ['ok' => true, 'locations' => $locations, 'note' =>
-                    'A lista será enviada logo depois da sua resposta. Responda só com uma frase curta pedindo para a pessoa tocar em "Ver opções" e escolher a dela — não repita os nomes.'];
+                    'A lista será enviada logo depois da sua resposta. Responda só com uma frase curta pedindo para a pessoa escolher a unidade dela na lista abaixo — não repita os nomes e não fale em botão.'];
 
             case 'create_ticket':
                 $description = trim($args['description'] ?? '');
