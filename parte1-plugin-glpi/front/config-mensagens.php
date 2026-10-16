@@ -52,7 +52,7 @@ PluginWhatsappbotConfig::renderStyles();
         <div class="wa-field">
           <label>Mensagem pedindo a localização/filial</label>
           <textarea name="ask_location_message" style="min-height:70px"><?= htmlspecialchars($config['ask_location_message'] ?? '') ?></textarea>
-          <span class="wa-hint">Enviada depois do nome — vira uma lista com as localizações cadastradas no GLPI, a resposta é obrigatória</span>
+          <span class="wa-hint">Enviada depois do nome — vai como texto de uma lista interativa (botão "Ver opções") com as localizações cadastradas no GLPI, a resposta é obrigatória. Prefira um texto simples, ex.: "📍 Em qual unidade você trabalha?"</span>
         </div>
         <div class="wa-field">
           <label>Mensagem de cobrança — 1ª tentativa errada no menu</label>

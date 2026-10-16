@@ -173,6 +173,7 @@ whatsapp-glpi/parte2-baileys-server/
 | GET | `/qr-view?token=...` | QR code como página HTML (para abrir no navegador) |
 | GET | `/health` | Health check (sem token) |
 | POST | `/send` | Envia mensagem de texto |
+| POST | `/send-list` | Envia lista de opções interativa (ou texto numerado) |
 | POST | `/send-image` | Envia imagem com legenda |
 | POST | `/logout` | Desconecta sessão WA (gera QR novo em seguida) |
 

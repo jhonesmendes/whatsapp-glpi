@@ -12,7 +12,7 @@ import 'dotenv/config';
 import express    from 'express';
 import QRCode     from 'qrcode';
 import { logger } from './logger.js';
-import { createBot, getClient } from './whatsapp.js';
+import { createBot, getClient, sendList } from './whatsapp.js';
 import { authMiddleware } from './middleware.js';
 
 const app  = express();
@@ -79,6 +79,34 @@ app.post('/send', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err, to }, 'Erro ao enviar mensagem');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /send-list
+ * Envia lista de opções interativa (cai pra texto numerado se não der)
+ * Body: { to, text, buttonText, footer?, rows: [{ id, title, description? }] }
+ */
+app.post('/send-list', authMiddleware, async (req, res) => {
+  const { to, text, buttonText = 'Ver opções', footer = '', rows } = req.body;
+
+  if (!to || !text || !Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'Campos obrigatórios: to, text, rows' });
+  }
+
+  try {
+    const client = getClient();
+    if (!client?.sock) {
+      return res.status(503).json({ error: 'WhatsApp não conectado' });
+    }
+
+    const jid  = to.includes('@') ? to : to + '@s.whatsapp.net';
+    const mode = await sendList(client.sock, jid, { text, buttonText, footer, rows });
+    logger.info({ to: jid, rows: rows.length, mode }, 'Lista enviada');
+    res.json({ ok: true, mode });
+  } catch (err) {
+    logger.error({ err, to }, 'Erro ao enviar lista');
     res.status(500).json({ error: err.message });
   }
 });

@@ -42,6 +42,23 @@ class PluginWhatsappbotWhatsapp {
     }
 
     /**
+     * Envia uma lista de opções interativa (botão que abre as opções para
+     * tocar). O Baileys cai para texto numerado se não conseguir — por
+     * isso os ids das opções devem ser "1", "2", ...
+     *
+     * @param array $rows [['id' => '1', 'title' => '...', 'description' => '...'], ...]
+     */
+    public function sendList(string $to, string $text, string $buttonText, array $rows, string $footer = ''): bool {
+        return $this->post('/send-list', [
+            'to'         => $this->toJid($to),
+            'text'       => $text,
+            'buttonText' => $buttonText,
+            'footer'     => $footer,
+            'rows'       => array_values($rows),
+        ]);
+    }
+
+    /**
      * Envia imagem com legenda opcional
      */
     public function sendImage(string $to, string $imageUrl, string $caption = ''): bool {

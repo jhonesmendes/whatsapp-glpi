@@ -40,6 +40,11 @@ class PluginWhatsappbotBot {
     // getActiveTicketInfo(). Preenchido a cada mensagem em handleAgentTurn.
     private ?array $activeTicket = null;
 
+    // Localizações que a ferramenta show_location_options pediu pra mandar
+    // como lista — enviada só depois da resposta da IA, pra lista ficar
+    // por último na conversa (logo abaixo do "escolha na lista").
+    private ?array $pendingLocationList = null;
+
     public function __construct() {
         $this->config  = PluginWhatsappbotConfig::getConfig();
         $this->wa      = new PluginWhatsappbotWhatsapp($this->config);
@@ -424,16 +429,6 @@ class PluginWhatsappbotBot {
         $locations = $this->glpiApi->getLocations();
 
         if (!empty($locations)) {
-            $header = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
-            $msg = "{$header}\n\n";
-            foreach ($locations as $i => $loc) {
-                $num = $i + 1;
-                // Sem negrito de propósito: tentativas de destacar o número
-                // (isolado ou a linha inteira) renderizavam estranho em
-                // alguns clientes de WhatsApp. Texto simples fica mais
-                // consistente entre clientes.
-                $msg .= "{$num} — {$loc['name']}\n";
-            }
             // Guarda só o essencial (id/name) — o resto que a API do GLPI
             // devolve (endereço, lat/long, cache internos, etc.) não é
             // usado e só deixa o contexto salvo maior à toa.
@@ -442,7 +437,7 @@ class PluginWhatsappbotBot {
                 $locations
             );
 
-            $this->wa->send($from, $msg);
+            $this->sendLocationList($from, $context['locations']);
             $this->updateSession($from, [
                 'state'   => self::STATE_OPEN_TICKET_LOCATION,
                 'context' => $this->encodeContext($context)
@@ -471,9 +466,12 @@ class PluginWhatsappbotBot {
         $name        = $context['name'] ?? null;
         $locations   = $context['locations'] ?? [];
 
-        $idx = (int)trim($body) - 1;
-        if (!is_numeric(trim($body)) || !isset($locations[$idx])) {
-            $this->wa->send($from, "⚠️ Por favor, responda apenas com o número da localização na lista acima.");
+        $idx = $this->matchLocationReply($body, $locations);
+        if ($idx === null) {
+            // Quem não entendeu o "filial/localização" costuma responder
+            // outra coisa — manda a lista de novo pra só tocar na opção.
+            $this->wa->send($from, "⚠️ Não encontrei essa opção. Escolha a sua na lista abaixo 👇");
+            $this->sendLocationList($from, $locations);
             return;
         }
         $locationsId = (int)$locations[$idx]['id'];
@@ -483,6 +481,68 @@ class PluginWhatsappbotBot {
         $catId      = $this->ai->detectCategory($description, $categories);
 
         $this->createTicket($from, $description, $locationsId, $catId, $session, $fromReal, $name, $context['attachment_ids'] ?? []);
+    }
+
+    /**
+     * Manda as localizações como lista interativa — a pessoa só toca na
+     * dela, em vez de ter que entender o que é "filial/localização" e
+     * digitar um número. Os ids das opções são "1", "2", ... (posição em
+     * $locations), então a resposta tocada ou digitada é tratada igual
+     * por matchLocationReply().
+     *
+     * @param array $locations [['id' => ..., 'name' => ...], ...]
+     */
+    private function sendLocationList(string $from, array $locations): void {
+        $rows = [];
+        foreach (array_values($locations) as $i => $loc) {
+            $name = trim($loc['name']);
+            // Título de opção tem limite de 24 caracteres no WhatsApp —
+            // o nome inteiro vai na descrição quando não couber.
+            $short = mb_strlen($name) > 24 ? mb_substr($name, 0, 23) . '…' : $name;
+            $rows[] = [
+                'id'          => (string)($i + 1),
+                'title'       => $short,
+                'description' => $short !== $name ? mb_substr($name, 0, 72) : '',
+            ];
+        }
+
+        $header = $this->config['ask_location_message'] ?: "📍 Informe sua filial/localização:";
+        $sent = $this->wa->sendList($from, $header, 'Ver opções', $rows, 'Toque em "Ver opções" e escolha a sua');
+        if (!$sent) {
+            // Servidor Baileys antigo (sem /send-list) ou fora do ar:
+            // manda a lista como texto numerado, igual era antes.
+            $lines = array_map(fn($i, $loc) => ($i + 1) . " — {$loc['name']}", array_keys(array_values($locations)), array_values($locations));
+            $this->wa->send($from, $header . "\n\n" . implode("\n", $lines));
+        }
+        $this->saveMessage($from, 'out', $header . ' [lista de localizações]');
+    }
+
+    /**
+     * Posição em $locations escolhida pela resposta: o número da opção
+     * (tocado na lista ou digitado) ou o nome da localização digitado.
+     */
+    private function matchLocationReply(string $body, array $locations): ?int {
+        $body = trim($body);
+        if (ctype_digit($body)) {
+            $idx = (int)$body - 1;
+            return isset($locations[$idx]) ? $idx : null;
+        }
+
+        $needle = mb_strtolower($body);
+        if ($needle === '') return null;
+        $locations = array_values($locations);
+        foreach ($locations as $i => $loc) {
+            if (mb_strtolower(trim($loc['name'])) === $needle) return $i;
+        }
+        if (mb_strlen($needle) < 3) return null;
+        $found = null;
+        foreach ($locations as $i => $loc) {
+            if (str_contains(mb_strtolower($loc['name']), $needle)) {
+                if ($found !== null) return null; // ambíguo
+                $found = $i;
+            }
+        }
+        return $found;
     }
 
     /**
@@ -611,6 +671,16 @@ class PluginWhatsappbotBot {
             }
         }
 
+        // Resposta à lista de localizações enviada antes: a opção tocada
+        // chega só como "2" — traduz pro nome e ID, senão a IA (que não
+        // guarda a lista no histórico) não sabe o que foi escolhido.
+        $offered = $context['offered_locations'] ?? [];
+        if ($offered && ($idx = $this->matchLocationReply($body, $offered)) !== null) {
+            $loc  = $offered[$idx];
+            $body = "Localização escolhida na lista: {$loc['name']} (location_id {$loc['id']})";
+            unset($context['offered_locations']);
+        }
+
         $history[] = ['role' => 'user', 'content' => $body];
 
         // Sem isso, a IA não sabia que já tinha aberto um chamado (o
@@ -662,6 +732,11 @@ class PluginWhatsappbotBot {
         $this->wa->send($from, $finalReply);
         $this->saveMessage($from, 'out', $finalReply);
 
+        if ($this->pendingLocationList) {
+            $this->sendLocationList($from, $this->pendingLocationList);
+            $finalReply .= "\n[lista de localizações enviada para a pessoa tocar e escolher]";
+        }
+
         // Persiste só o histórico em texto simples (user/assistant) — não
         // guarda as chamadas de ferramenta nem os resultados delas, pra
         // não estourar o limite de 64KB da coluna "context" nem inflar o
@@ -699,9 +774,14 @@ qualquer ordem, e mais de uma coisa por mensagem):
 - o nome de quem está pedindo;
 - o e-mail de quem está pedindo (usado para achar a conta da pessoa no
   sistema, se existir);
-- a localização/filial da pessoa — chame a ferramenta list_locations pra
-  saber quais existem antes de perguntar; se a lista vier vazia, pode
-  seguir sem perguntar localização.
+- a localização/filial da pessoa — muita gente não entende o que é
+  "localização/filial", então NÃO pergunte por texto nem liste os nomes:
+  chame show_location_options, que manda uma lista para a pessoa só tocar
+  na dela, e responda numa frase curta pedindo para escolher na lista
+  abaixo. Se a pessoa responder algo que não seja uma das opções, ficar
+  em dúvida ou perguntar o que é, chame show_location_options de novo
+  (explicando em poucas palavras que é a unidade onde ela trabalha). Se
+  não houver localizações cadastradas, siga sem perguntar.
 Só chame create_ticket depois de ter TODOS esses dados. Nunca invente
 nome, e-mail ou localização — se a pessoa não disse, pergunte.
 Assim que a pessoa informar nome e e-mail (e a localização, se houver),
@@ -841,7 +921,15 @@ PROMPT;
                 'type'     => 'function',
                 'function' => [
                     'name'        => 'list_locations',
-                    'description' => 'Lista as filiais/localizações cadastradas no sistema, para o usuário escolher a dele antes de abrir um chamado.',
+                    'description' => 'Consulta as filiais/localizações cadastradas (só pra você conferir um nome ou ID). Para a pessoa escolher a dela, use show_location_options.',
+                    'parameters'  => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+                ],
+            ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'show_location_options',
+                    'description' => 'Envia ao usuário, logo depois da sua resposta, uma lista interativa com as filiais/localizações para ele tocar e escolher. Use sempre que precisar da localização, e de novo se a pessoa ficar em dúvida. A escolha volta como "Localização escolhida na lista: <nome> (location_id N)".',
                     'parameters'  => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
                 ],
             ],
@@ -849,14 +937,14 @@ PROMPT;
                 'type'     => 'function',
                 'function' => [
                     'name'        => 'create_ticket',
-                    'description' => 'Abre um novo chamado de suporte. Só chame quando já tiver descrição, nome e e-mail do solicitante, e (se list_locations retornou alguma) o location_id escolhido.',
+                    'description' => 'Abre um novo chamado de suporte. Só chame quando já tiver descrição, nome e e-mail do solicitante, e (se houver localizações cadastradas) o location_id escolhido.',
                     'parameters'  => [
                         'type'       => 'object',
                         'properties' => [
                             'description'     => ['type' => 'string', 'description' => 'Descrição do problema relatado pelo usuário'],
                             'requester_name'  => ['type' => 'string', 'description' => 'Nome de quem está solicitando'],
                             'requester_email' => ['type' => 'string', 'description' => 'E-mail de quem está solicitando'],
-                            'location_id'     => ['type' => 'integer', 'description' => 'ID da localização escolhida (retornado por list_locations). Use 0 se não houver localizações cadastradas.'],
+                            'location_id'     => ['type' => 'integer', 'description' => 'ID da localização escolhida (de show_location_options ou list_locations). Use 0 se não houver localizações cadastradas.'],
                             'new_issue'       => ['type' => 'boolean', 'description' => 'Obrigatório (true) quando a pessoa já tem um chamado aberto e confirmou que este é um problema diferente.'],
                         ],
                         'required' => ['description', 'requester_name', 'requester_email'],
@@ -873,7 +961,7 @@ PROMPT;
                         'properties' => [
                             'name'        => ['type' => 'string', 'description' => 'Nome de quem está solicitando'],
                             'email'       => ['type' => 'string', 'description' => 'E-mail de quem está solicitando'],
-                            'location_id' => ['type' => 'integer', 'description' => 'ID da localização (retornado por list_locations), ou 0 se ainda não souber / não houver.'],
+                            'location_id' => ['type' => 'integer', 'description' => 'ID da localização (de show_location_options ou list_locations), ou 0 se ainda não souber / não houver.'],
                         ],
                         'required' => ['name', 'email'],
                     ],
@@ -943,6 +1031,19 @@ PROMPT;
                     $locations
                 )];
 
+            case 'show_location_options':
+                $locations = array_map(
+                    fn($l) => ['id' => (int)$l['id'], 'name' => $l['name']],
+                    $this->glpiApi->getLocations()
+                );
+                if (!$locations) {
+                    return ['ok' => false, 'locations' => [], 'note' => 'Não há localizações cadastradas — siga sem perguntar localização (location_id 0).'];
+                }
+                $this->pendingLocationList   = $locations;
+                $context['offered_locations'] = $locations;
+                return ['ok' => true, 'locations' => $locations, 'note' =>
+                    'A lista será enviada logo depois da sua resposta. Responda só com uma frase curta pedindo para a pessoa tocar em "Ver opções" e escolher a dela — não repita os nomes.'];
+
             case 'create_ticket':
                 $description = trim($args['description'] ?? '');
                 $reqName     = trim($args['requester_name'] ?? '');
@@ -980,6 +1081,7 @@ PROMPT;
                 }
 
                 $context['attachment_ids'] = [];
+                unset($context['offered_locations']);
                 $context['requester'] = $this->buildRequester($reqName, $email, $locationId, $context['requester'] ?? null);
                 // Conta como chamado ativo já nesta mesma rodada: impede um
                 // segundo create_ticket em sequência.

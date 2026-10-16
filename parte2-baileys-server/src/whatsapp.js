@@ -11,6 +11,8 @@ import {
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   downloadMediaMessage,
+  generateWAMessageFromContent,
+  proto,
 } from '@whiskeysockets/baileys';
 import { Boom }   from '@hapi/boom';
 import axios      from 'axios';
@@ -27,6 +29,13 @@ const MAX_RECONNECT = parseInt(process.env.MAX_RECONNECT || '5');
 // compartilhadas costumam ter post_max_size baixo (8MB é comum), e o
 // base64 já adiciona ~33% de overhead sobre o tamanho original.
 const MAX_MEDIA_BYTES = parseInt(process.env.MAX_MEDIA_BYTES || String(5 * 1024 * 1024));
+// Lista interativa (botão "toque para escolher") não é oficialmente
+// suportada fora da API Business — funciona via Baileys na maioria dos
+// celulares, mas pode não aparecer em algum cliente. Com "false", sempre
+// manda a lista como texto numerado (o comportamento antigo).
+const INTERACTIVE_LISTS = (process.env.INTERACTIVE_LISTS || 'true') !== 'false';
+// O WhatsApp aceita no máximo 10 opções por lista — acima disso vai como texto.
+const MAX_LIST_ROWS = 10;
 
 let clientState = {
   sock            : null,
@@ -214,8 +223,88 @@ function extractMessageText(msg) {
     m.listResponseMessage?.singleSelectReply?.selectedRowId ||
     m.buttonsResponseMessage?.selectedButtonId ||
     m.templateButtonReplyMessage?.selectedId ||
+    nativeFlowSelectedId(m) ||
     ''
   );
+}
+
+/**
+ * Resposta de uma lista interativa (nativeFlow "single_select"): o id da
+ * opção escolhida vem dentro de um JSON em paramsJson.
+ */
+function nativeFlowSelectedId(m) {
+  const params = m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+  if (!params) return '';
+  try {
+    return String(JSON.parse(params).id || '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Envia uma lista de opções interativa (abre uma janela com as opções ao
+ * tocar no botão). A resposta chega como mensagem comum, com o "id" da
+ * opção escolhida no corpo — ver extractMessageText().
+ *
+ * Se a lista interativa estiver desligada, tiver opções demais ou o envio
+ * falhar, manda como texto numerado: "1 — Título" (por isso os ids das
+ * opções devem ser "1", "2", ... para a resposta digitada funcionar igual).
+ *
+ * rows: [{ id, title, description? }]
+ */
+export async function sendList(sock, jid, { text, buttonText, footer = '', rows }) {
+  if (INTERACTIVE_LISTS && rows.length <= MAX_LIST_ROWS) {
+    try {
+      const msg = generateWAMessageFromContent(jid, {
+        viewOnceMessage: {
+          message: {
+            messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
+            interactiveMessage: proto.Message.InteractiveMessage.create({
+              body   : { text },
+              footer : footer ? { text: footer } : undefined,
+              nativeFlowMessage: {
+                buttons: [{
+                  name             : 'single_select',
+                  buttonParamsJson : JSON.stringify({
+                    title    : buttonText,
+                    sections : [{
+                      title : buttonText,
+                      rows  : rows.map((r) => ({
+                        id          : String(r.id),
+                        title       : r.title,
+                        description : r.description || '',
+                      })),
+                    }],
+                  }),
+                }],
+              },
+            }),
+          },
+        },
+      }, { userJid: sock.user?.id });
+
+      // O nó "biz" é o que faz o WhatsApp renderizar a lista em vez de
+      // mostrar "mensagem não suportada" em boa parte dos clientes.
+      await sock.relayMessage(jid, msg.message, {
+        messageId      : msg.key.id,
+        additionalNodes: [{
+          tag: 'biz', attrs: {},
+          content: [{
+            tag: 'interactive', attrs: { type: 'native_flow', v: '1' },
+            content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+          }],
+        }],
+      });
+      return 'interactive';
+    } catch (err) {
+      logger.warn({ err, to: jid }, 'Falha ao enviar lista interativa — enviando como texto');
+    }
+  }
+
+  const lines = rows.map((r, i) => `${i + 1} — ${r.description || r.title}`);
+  await sock.sendMessage(jid, { text: `${text}\n\n${lines.join('\n')}` });
+  return 'text';
 }
 
 /**
